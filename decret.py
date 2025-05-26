@@ -149,6 +149,13 @@ def arg_parsing(args=None):
         type=str,
         help="Change the CMD line to specify the command to run by default in the container",
     )
+    parser.add_argument(
+        "--dont-run",
+        dest="dont_run",
+        action="store_true",
+        help="Prevents directly running the containter after building",
+    )
+
 
     namespace = parser.parse_args(args)
 
@@ -624,7 +631,8 @@ def main():  # pragma: no cover
         print("My work here is done.")
         return
     build_docker(args)
-    run_docker(args)
+    if not args.dont_run:
+        run_docker(args)
 
 
 if __name__ == "__main__":  # pragma: no cover
