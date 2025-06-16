@@ -426,10 +426,19 @@ def get_hash_and_bin_names(
 
 def get_snapshot(cve_details: list[dict]):
     snapshot_id = []
+#    print(f"All are : '{cve_details}'")
     for item in cve_details:
-        url = f"http://snapshot.debian.org/mr/file/{item['hash']}/info"
-        response = requests.get(url, timeout=DEFAULT_TIMEOUT).json()["result"][-1]
-        snapshot_id.append(response["first_seen"])
+#        url = f"http://snapshot.debian.org/mr/file/{item['hash']}/info"
+        value = item.get('hash')
+        if value is None:
+            print(f"Not found in '{item}'")
+        else:
+            print(f" '{item['hash']}'")
+            url = f"http://snapshot.debian.org/mr/file/{item['hash']}/info"
+
+            response = requests.get(url, timeout=DEFAULT_TIMEOUT).json()["result"][-1]
+            snapshot_id.append(response["first_seen"])
+        
 
     if not snapshot_id:
         raise Exception("Snapshot id not found.")
@@ -499,7 +508,10 @@ def build_docker(args):
         build_cmd = []
     else:
         build_cmd = ["sudo"]
+
+    build_cmd.extend(["PROGRESS_NO_TRUNC=1"])
     build_cmd.extend(["docker", "build"])
+    build_cmd.extend(["--progress", "plain", "--no-cache"])
     build_cmd.extend(["-t", docker_image_name])
     build_cmd.append(args.dirname)
 
