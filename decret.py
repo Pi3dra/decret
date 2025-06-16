@@ -1,14 +1,15 @@
 """
 Software Name : decret (DEbian Cve REproducer Tool)
 Version : 0.1
-SPDX-FileCopyrightText : Copyright (c) 2023 Orange
+SPDX-FileCopyrightText : Copyright (c) 2023-2025 Orange
 SPDX-License-Identifier : BSD-3-Clause
 
 This software is distributed under the BSD 3-Clause "New" or "Revised" License,
 the text of which is available at https://opensource.org/licenses/BSD-3-Clause
 or see the "license.txt" file for more not details.
 
-Authors : Clément PARSSEGNY, Olivier LEVILLAIN, Maxime BELAIR, Mathieu BACOU
+Authors : Clément PARSSEGNY, Olivier LEVILLAIN, Maxime BELAIR, Mathieu BACOU,
+Nicolas DEJON
 Software description : A tool to reproduce vulnerability affecting Debian
 It gathers details from the Debian metadata and exploits from exploit-db.com
 in order to build and run a vulnerable Docker container to test and
@@ -75,7 +76,7 @@ def arg_parsing(args=None):
         dest="release",
         type=str,
         choices=DEBIAN_RELEASES,
-        help="Debian Release name from 2005 to 2022",
+        help="Debian Release name from 2005 to 2025",
         required=True,
     )
     parser.add_argument(
