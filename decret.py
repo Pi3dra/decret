@@ -427,14 +427,11 @@ def get_hash_and_bin_names(
 
 def get_snapshot(cve_details: list[dict]):
     snapshot_id = []
-#    print(f"All are : '{cve_details}'")
     for item in cve_details:
-#        url = f"http://snapshot.debian.org/mr/file/{item['hash']}/info"
         value = item.get('hash')
         if value is None:
             print(f"Not found in '{item}'")
         else:
-            print(f" '{item['hash']}'")
             url = f"http://snapshot.debian.org/mr/file/{item['hash']}/info"
 
             response = requests.get(url, timeout=DEFAULT_TIMEOUT).json()["result"][-1]
