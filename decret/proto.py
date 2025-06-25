@@ -198,9 +198,66 @@ class Cve:
 
         return self
 
-    # This could be cleaner with an iterator handling the bugids
-    # TODO: Split this
-    #pylint: disable=(too-many-locals)
+    #Helper of bug_version_lookup
+    def bug_version_lookup(self, args, check=False):
+        self.init_vulnerable()
+        if self.bugids is None or self.vulnerable is None:
+            raise SearchError(f"Package {self.package} for {self.release} has no bugids.")
+
+        for i, (bug_id, used) in enumerate(self.bugids):
+            if used:
+                continue
+            if bug_id < 40000:
+                print(f"Warning: Bug ID {bug_id} might be unavailable, trying anyway.")
+
+            self.bugids[i] = (bug_id, True)
+            try:
+                versions = self._fetch_bug_versions(bug_id, args, check)
+                self._update_vulnerable(versions, check)
+            except RequestException as exc:
+                raise SearchError(f"Error accessing bug report for bug {bug_id}") from exc
+
+
+    def _fetch_bug_versions(self,bug_id,args,check):
+        url = f"https://bugs.debian.org/cgi-bin/bugreport.cgi?bug={bug_id}"
+        response = requests.get(url, timeout=30)
+        response.raise_for_status()
+        content = response.text
+
+        if check:
+            cve = f"CVE-{args.cve_number}"
+            debug(f"Checking {cve} in bug report: {cve in content}")
+            if cve not in content:
+                raise CVENotFound("Bug linked to CVE via DSA doesn't reference this CVE.")
+
+        soup = BeautifulSoup(content, "html.parser")
+        bug_info = soup.find("div", class_="buginfo")
+        if not bug_info or not isinstance(bug_info, Tag):
+            raise CVENotFound(f"No valid buginfo div for bug {bug_info}")
+
+        versions = []
+        for p in bug_info.find_all("p"):
+            text = p.get_text(strip=True)
+            if text.startswith(("Found in version ", "Found in versions ")):
+                version_text = text.removeprefix("Found in version ").removeprefix("Found in versions ").strip()
+                #NOTE: THIS IS WHY THERE MAY BE MANY VULN CONFIGS
+                versions.extend(version_text.split(", "))
+
+        if not versions:
+            raise CVENotFound(f"Bug {bug_id} has no 'Found in version' tag.")
+
+        debug(f"Versions: {versions}")
+        return versions
+
+    #TODO vulnerable is being a pain
+    def _update_vulnerable(self, versions: list, check: bool) -> None:
+        self.init_vulnerable()
+        assert self.vulnerable is not None
+        method = "DSA" if check else "Bug"
+        for version in versions:
+            self.vulnerable.append(VulnerableConfig(version=version, method=method))
+
+
     def bug_version_lookup(self, args, check=False):
         self.init_vulnerable()
 
@@ -625,6 +682,7 @@ if __name__ == "__main__":
     # TODO: Understand how we deal with the (unfixed) tag now
     # TODO: cve.vulnerable shouldn't be a list
     # TODO: fix bug_lookup
+    # TODO: test qemu-img convert -c -f qcow2 -O vmdk image.qcow2 image.vmdk
     try:
         arguments = argparse.Namespace()
         arguments.cve_number = "2016-3714"
