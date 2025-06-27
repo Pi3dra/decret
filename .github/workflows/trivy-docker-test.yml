@@ -32,7 +32,7 @@ jobs:
         uses: aquasecurity/trivy-action@master
         id: trivy
         with:
-          image-ref: ghcr.io/pi3dra/ci-decret/${{ matrix.cve }}:latest
+          image-ref: ghcr.io/pi3dra/decret/${{ matrix.cve }}:latest
           format: json
           output: trivy-results.json
 

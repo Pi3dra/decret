@@ -23,8 +23,8 @@ jobs:
 
     - name: Pull docker (CVE-2016-3714)
       run: |
-        docker pull ghcr.io/pi3dra/ci-decret/cve-2016-3714:latest
-        docker tag ghcr.io/pi3dra/ci-decret/cve-2016-3714:latest cve-2016-3714
+        docker pull ghcr.io/pi3dra/decret/cve-2016-3714:latest
+        docker tag ghcr.io/pi3dra/decret/cve-2016-3714:latest cve-2016-3714
 
     - name: Test vuln (CVE-2016-3714)
       run: |
@@ -34,8 +34,8 @@ jobs:
         
     - name: Pull docker (CVE-2020-7247)
       run: |
-        docker pull ghcr.io/pi3dra/ci-decret/cve-2020-7247:latest
-        docker tag ghcr.io/pi3dra/ci-decret/cve-2020-7247:latest cve-2020-7247
+        docker pull ghcr.io/pi3dra/decret/cve-2020-7247:latest
+        docker tag ghcr.io/pi3dra/decret/cve-2020-7247:latest cve-2020-7247
 
     - name: Test vuln (CVE-2016-3714)
       run: |
