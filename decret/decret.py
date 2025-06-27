@@ -1,8 +1,7 @@
 """
 Software Name : decret (DEbian Cve REproducer Tool)
 Version : 0.1
-SPDX-FileCopyrightText : Copyright (c) 2023-2025 Orange
-SPDX-License-Identifier : BSD-3-Clause
+SPDX-FileCopyrightText : Copyright (c) 2023-2025 Orange SPDX-License-Identifier : BSD-3-Clause
 
 This software is distributed under the BSD 3-Clause "New" or "Revised" License,
 the text of which is available at https://opensource.org/licenses/BSD-3-Clause
@@ -19,6 +18,7 @@ illustrate security concepts.
 from typing import Tuple
 
 import argparse
+import os
 import json
 from pathlib import Path
 import re
@@ -43,17 +43,28 @@ DEBIAN_RELEASES = [
     "stretch",
     "buster",
     "bullseye",
-    "bookworm",
-    "trixie",  # These just helps to retrieve information easier
+    "bookworm", # These just helps to retrieve information easier
     "(unstable)",  # might be needed to treat it differently
     "sid",
+    "trixie",
 ]
+
+
+#The releases available here: http://ftp.debian.org/debian/ crash if the
+# sources.list is overwriten to only use the snapshot, meanwhile those
+# who are not here need to strictly use the snapshot if not they crash
+AVAILABLE_ON_MAIN_SITE = DEBIAN_RELEASES[-6:]
 
 LATEST_RELEASE = DEBIAN_RELEASES[-1]
 
 DEFAULT_TIMEOUT = 10
 
 DOCKER_SHARED_DIR = "/tmp/decret"
+
+#makes testing easier:
+#-Copies the mounted folder with exploits on the image
+#-Avoids running the image interactively after build
+RUNS_ON_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
 
 
 class FatalError(BaseException):
@@ -136,6 +147,12 @@ def arg_parsing(args=None):
         help="Do not build nor run the created docker",
     )
     parser.add_argument(
+        "--dont-run",
+        dest="dont_run",
+        action="store_true",
+        help="Do not build nor run the created docker",
+    )
+    parser.add_argument(
         "--cache-main-json-file",
         dest="cache_main_json_file",
         type=str,
@@ -152,12 +169,6 @@ def arg_parsing(args=None):
         dest="cmd_line",
         type=str,
         help="Change the CMD line to specify the command to run by default in the container",
-    )
-    parser.add_argument(
-        "--dont-run",
-        dest="dont_run",
-        action="store_true",
-        help="Prevents directly running the containter after building",
     )
 
     namespace = parser.parse_args(args)
@@ -473,7 +484,7 @@ def prepare_sources(snapshot_id: str, vuln_fixed: bool):
     url = f"http://snapshot.debian.org/archive/debian/{snapshot_id}/"
     if vuln_fixed:
         release = ["testing", "stable", "unstable"]
-    return [f"deb {options} {url} {rel} main" for rel in release]
+        return [f"deb {options} {url} {rel} main" for rel in release]
 
 
 def write_dockerfile(args: argparse.Namespace, cve_details, source_lines: list[str]):
@@ -483,7 +494,7 @@ def write_dockerfile(args: argparse.Namespace, cve_details, source_lines: list[s
     template_content = src_template.read_text()
     template = jinja2.Environment().from_string(template_content)
 
-    if args.release in DEBIAN_RELEASES[:6]:
+    if args.release in DEBIAN_RELEASES[:7]:
         apt_flag = "--force-yes"
     else:
         apt_flag = "--allow-unauthenticated --allow-downgrades"
@@ -496,14 +507,19 @@ def write_dockerfile(args: argparse.Namespace, cve_details, source_lines: list[s
             bin_name_and_version = [bin_name + f"={item['vuln_version']}"]
             binary_packages.extend(bin_name_and_version)
 
+    #Old reseases should only use the snapshot sources
+    clear_sources = args.release not in AVAILABLE_ON_MAIN_SITE
+
     content = template.render(
+        clear_sources=clear_sources,
         debian_release=args.release,
         source_lines=source_lines,
         apt_flag=apt_flag,
         default_packages=default_packages,
         package_name=" ".join(binary_packages),
         run_lines=args.run_lines,
-        cmd_line=args.cmd_line
+        cmd_line=args.cmd_line,
+        copy_exploits=RUNS_ON_GITHUB_ACTIONS
     )
     target_dockerfile.write_text(content)
 
@@ -635,6 +651,10 @@ def main():  # pragma: no cover
         print("My work here is done.")
         return
     build_docker(args)
+    if args.dont_run or RUNS_ON_GITHUB_ACTIONS:
+        print("My work here is done.")
+        return
+
     run_docker(args)
 
 
