@@ -1,20 +1,32 @@
 import argparse
-import time  # ERASE, this is for testing only
-import os
 import re
-import pandas as pd
 from bs4 import BeautifulSoup, Tag
 from requests.exceptions import RequestException
 from decret.decret import (
     requests,
     DEFAULT_TIMEOUT,
     DEBIAN_RELEASES,
+    LATEST_RELEASE,
+    RUNS_ON_GITHUB_ACTIONS,
     FatalError,
     CVENotFound,
-    Path,
     sys,
 )
 
+from decret.utils import (
+    download_db,
+    get_exploits,
+    init_decret,
+    init_shared_directory,
+    write_cmdline,
+    prepare_sources,
+    write_dockerfile,
+    build_docker,
+    run_docker,
+)
+
+METHOD_PRIORITY = {"Vulnerable": 4, "Bug": 3, "DSA": 2, "N-1": 1}
+RELEASE_PRIORITY = {name: i for i, name in enumerate(DEBIAN_RELEASES)}
 
 DEBUG = False
 
@@ -26,6 +38,13 @@ class SearchError(BaseException):
 def debug(string):
     if DEBUG:
         print(string)
+
+
+def get_json(url):
+    response = requests.get(url, timeout=DEFAULT_TIMEOUT)
+    response.raise_for_status()
+    response = response.json()["result"]
+    return response
 
 
 class VulnerableConfig:
@@ -40,7 +59,7 @@ class VulnerableConfig:
         return (
             f"  version: {self.version}\n "
             f"   timestamp: {self.timestamp}\n "
-            f"   method: {self.method}\n"  # [bug,DSA,n-1,still_vulnerable]
+            f"   method: {self.method}"
         )
 
     def get_bin_names(self, package):
@@ -51,9 +70,7 @@ class VulnerableConfig:
         )
 
         try:
-            response = requests.get(url, timeout=DEFAULT_TIMEOUT)
-            response.raise_for_status()
-            response = response.json()["result"]
+            response = get_json(url)
             for res in response:
                 bin_names.append(res["name"])
         except requests.exceptions.RequestException as err:
@@ -61,14 +78,9 @@ class VulnerableConfig:
 
     def get_hash_and_bin_names(self, args, package):
         try:
-            url = (
-                f"http://snapshot.debian.org/mr/binary"
-                f"/{package}/{self.version}/binfiles"
-            )
+            url = f"http://snapshot.debian.org/mr/binary/{package}/{self.version}/binfiles"
 
-            response = requests.get(url, timeout=DEFAULT_TIMEOUT)
-            response.raise_for_status()
-            response = response.json()["result"]
+            response = get_json(url)
             for res in response:
                 if res["architecture"] == "amd64" or res["architecture"] == "all":
                     self.pkg_hash = res["hash"]
@@ -81,10 +93,7 @@ class VulnerableConfig:
                     f"http://snapshot.debian.org/mr/package"
                     f"/{package}/{self.version}/srcfiles"
                 )
-                response = requests.get(url, timeout=DEFAULT_TIMEOUT)
-                response.raise_for_status()
-                response = response.json()["result"]
-
+                response = get_json(url)
                 self.pkg_hash = response[-1]["hash"]
                 self.get_bin_names(package)
             except Exception as error2:
@@ -108,10 +117,8 @@ class VulnerableConfig:
     def get_snapshot(self):
         try:
             url = f"http://snapshot.debian.org/mr/file/{self.pkg_hash}/info"
-            response = requests.get(url, timeout=DEFAULT_TIMEOUT)
-            response.raise_for_status()
-            response = response.json()["result"][-1]
-            self.timestamp = response["first_seen"]
+            response = get_json(url)
+            self.timestamp = response[0]["first_seen"]
         except (requests.exceptions.RequestException, KeyError) as error:
             raise SearchError(f"failed to find snapshot with: {error}") from error
 
@@ -125,7 +132,7 @@ class Cve:
         fixed=None,
         advisory=None,
         bugids=None,
-        vulnerable=None,  # TODO: this shouldn't be a list, as we only keep one
+        vulnerable=None,
     ):
         self.package = package
         self.release = release
@@ -145,7 +152,7 @@ class Cve:
             f"{self.package}:\n "
             f"release: {self.release}\n "
             f"fixed:\n  {self.fixed}\n "
-            f"vulnerable:\n{vuln_version_strs}"
+            f"vulnerable:{vuln_version_strs}\n"
             f"advisory:\n  {self.advisory}\n "
             f"bugids:  {self.bugids} \n "
         )
@@ -200,7 +207,7 @@ class Cve:
 
     # This could be cleaner with an iterator handling the bugids
     # TODO: Split this
-    #pylint: disable=(too-many-locals)
+    # pylint: disable=(too-many-locals)
     def bug_version_lookup(self, args, check=False):
         self.init_vulnerable()
 
@@ -219,7 +226,8 @@ class Cve:
                 self.bugids[i] = (bugid, True)
                 url = f"https://bugs.debian.org/cgi-bin/bugreport.cgi?bug={bugid}"
                 try:
-                    response = requests.get(url, timeout=DEFAULT_TIMEOUT)
+                    # This can be very slow
+                    response = requests.get(url, timeout=DEFAULT_TIMEOUT * 6)
                     response.raise_for_status()
                     content = response.text
 
@@ -233,7 +241,7 @@ class Cve:
                         if cve_fullname not in content:
                             raise CVENotFound(
                                 "The bug linked to this cve through"
-                                "DSA doesn't seem to concern the current CVE"
+                                " DSA doesn't seem to concern the current CVE"
                             )
                     soup = BeautifulSoup(content, "html.parser")
                     bug_info = soup.find("div", class_="buginfo")
@@ -254,10 +262,16 @@ class Cve:
                     debug(versions)
 
                     # We treat cases where one bug concerns many versions
-                    # TODO: Handle cases where the packagename is prepended to the version
                     for version in versions:
+                        # In some bug reports the packagename is prepended/ to the version
+                        slash_pos = version.find("/")
+                        if slash_pos != -1:
+                            clean_version = version[slash_pos + 1 :]
+                        else:
+                            clean_version = version
+
                         vulnerable_config = VulnerableConfig(
-                            version=version, method="Bug" if not check else "DSA"
+                            version=clean_version, method="Bug" if not check else "DSA"
                         )
                         self.vulnerable.append(vulnerable_config)
                     if not versions:
@@ -265,24 +279,27 @@ class Cve:
                             f"bug { self.bugids} has no 'Found in version' tag"
                         )
 
-                except RequestException as exc:
-                    raise SearchError("requests: Error accesing bug report") from exc
+                # TODO: if this generates many versions it should add new cves
+                # instead of appending vuln_configs
+                except RequestException as error:
+                    raise SearchError(
+                        f"requests: Error accesing bug report: {error}"
+                    ) from error
 
     def dsa_version_lookup(self, args):
-        # TODO: Investigate, some old DSAs are no longer available? CVE-2002-1051
         self.init_vulnerable()
         if self.bugids is None:
             self.bugids = []
 
-        if self.advisory is None or self.vulnerable is not None:
+        if self.advisory is None:
             raise SearchError(
                 f"package: {self.package} for {self.release} has no DSA/DLA"
             )
 
         url = (
             f"https://www.debian.org/"
-            f"{'lts/' if 'DSA' in self.advisory else ''}"
-            "security/{self.advisory}"
+            f"{'lts/' if 'DLA' in self.advisory else ''}"
+            f"security/{self.advisory}"
         )
 
         try:
@@ -310,35 +327,45 @@ class Cve:
         self.bug_version_lookup(args, check=True)
 
     def vulnerable_versions_lookup(self, args):
+        #global DEBUG
+        #DEBUG = self.release == "(unstable)"
         # TODO: Refactor this to send an error if a version isn't found,
         # This way it can be filtered
 
+        debug(f"FINDING version for: {self.package},{self.release}")
         try:
+            debug(f"ATTEMTPING to find version with bugid")
             self.bug_version_lookup(args)
         except (SearchError, CVENotFound) as error:
-            debug(f"finding vulnerable version for: {self.package},{self.release}")
-            debug(f"Finding version through bugid failed with:\n\t{error}")
+            debug(f"BUGS failed with:\n\t{error}\n")
             if self.advisory:
-                debug("\tattempting to find version using DSAs")
+                debug("ATTEMPTING to find version with DSA")
+                debug(self.advisory)
                 try:
                     self.dsa_version_lookup(args)
                 except (SearchError, CVENotFound) as error2:
-                    debug(
-                        f"\t\tFinding version through DSAs failed with:\n\t\t\t{error2}"
-                        "\t\t\tattempting to find the preceding version of the fixed one"
+                    debug(f"DSA failed with:\n\t{error2}\n")
+
+                    # DSA lookup can find many bugids, which can fail
+                    # We only search with N-1 if all of them failed
+                    found_any = any(
+                        config.method == "DSA"
+                        for config in self.vulnerable
+                        if self.vulnerable is not None
                     )
-                    try:
-                        self.preceding_version_lookup()
-                    except (SearchError, CVENotFound) as _:
-                        debug(
-                            f"\t\t\t\tThis package: {self.package} is currently vulnerable"
-                        )
+
+                    if not found_any:
+                        debug("ATTEMPTING to find version with N-1")
+                        try:
+                            self.preceding_version_lookup()
+                        except (SearchError, CVENotFound) as error:
+                            debug(f"N-1 failed with:\n\t{error}")
             else:
-                debug("\tattempting to find the preceding version of the fixed one")
                 try:
+                    debug("ATTEMPTING to find version with N-1")
                     self.preceding_version_lookup()
-                except (SearchError, CVENotFound):
-                    debug(f"\t\tthis package: {self.package} is currently vulnerable")
+                except (SearchError, CVENotFound) as error:
+                    debug(f"N-1 failed with:\n\t{error}")
 
 
 def get_cve_tables(args: argparse.Namespace):
@@ -463,7 +490,7 @@ def convert_tables(info_table, fixed_table):
     # If there's a line here, it means the release concerned by this line is vulnerable
     # see: filter_table
     for line in info_table:
-        vulnerable_config = VulnerableConfig(version=line[2], method="vulnerable")
+        vulnerable_config = VulnerableConfig(version=line[2], method="Vulnerable")
         config2 = Cve(package=line[0], release=line[1], vulnerable=[vulnerable_config])
         convert_results.append(config2)
 
@@ -476,173 +503,116 @@ def convert_tables(info_table, fixed_table):
 def versions_lookup(cve_list, args):
     # might be smart to use flags to filter which method to use
     for cve in cve_list:
-        cve.vulnerable_versions_lookup(args)
+        if cve.vulnerable == []:
+            cve.vulnerable_versions_lookup(args)
 
 
 def get_snapshots(cve_list, args):
     for cve in cve_list:
         for config in cve.vulnerable:
             try:
-                config.get_hash_and_bin_names(cve.package, args)
+                config.get_hash_and_bin_names(args, cve.package)
                 config.get_snapshot()
             except SearchError as error:
                 debug(f"failed to get snapshot with: {error}")
                 cve_list.remove(cve)
 
 
-def db_is_up_to_date():
-    """
-    Returns a tuple ( bool * string) indicating if the db needs updating and the new hash
-    """
-    project_id = "40927511"  # Project ID for exploit-db
-    file_path = "files_exploits.csv"
-    destination_dir = "cached-files"
-    hash_file_path = os.path.join(destination_dir, "files_exploits.hash")
-    url = (
-        f"https://gitlab.com/api/v4/projects/{project_id}"
-        f"/repository/files/{file_path}/raw?ref=main"
+def collapse_list(cve_list):
+    # For the time being if a bug report has many affected versions we take the first one:
+    for cve in cve_list:
+        if len(cve.vulnerable) <= 0:
+            print(cve.to_string())
+        cve.vulnerable = cve.vulnerable[0]
+
+
+def choose_one(cve_list):
+    # The idea here is to choose the most reliable method with the most recent release
+    # we use the lexicographical comparison of python tuples for this
+    # this goes through all the CVE list,
+    # but supposes the vulnerable config is one element instead of a list
+
+    collapse_list(cve_list)
+
+    best = max(
+        cve_list,
+        key=lambda x: (
+            METHOD_PRIORITY[x.vulnerable.method],
+            RELEASE_PRIORITY[x.release],
+        ),
     )
 
-    # TODO: Test this further, curl needs 0,5s
-    # meanwhile this takes 10 secs to get a HEAD request
-    # Maybe it's my pc lol
-    start = time.perf_counter()
-    head = requests.head(url, timeout=DEFAULT_TIMEOUT)
-    duration = time.perf_counter() - start
-    print(f"HEAD request took: {duration:.2f} seconds")
-    head.raise_for_status()
-    blob_hash = head.headers["x-gitlab-blob-id"]
+    return best
 
-    stored_blob_hash = None
-
-    try:
-        with open(hash_file_path, "r", encoding="utf-8") as file:
-            stored_blob_hash = file.read()
-    except FileNotFoundError:
-        return (False, blob_hash)
-
-    return (stored_blob_hash == blob_hash, blob_hash)
+    # TODO: Understand how we deal with the (unfixed) tag now
 
 
-def download_db():
-    # DOCS: https://docs.gitlab.com/api/repository_files/#get-file-metadata-only
-    project_id = "40927511"  # Project ID for exploit-db
-    file_path = "files_exploits.csv"
-    destination_dir = "cached-files"
-    hash_file_path = os.path.join(destination_dir, "files_exploits.hash")
-    csv_file_path = os.path.join(destination_dir, file_path)
-    url = (
-        f"https://gitlab.com/api/v4/projects/{project_id}"
-        f"/repository/files/{file_path}/raw?ref=main"
+def main():
+    # Run nteractively
+    arguments = init_decret()
+    # TODO: Add more reobust error handling
+
+    print(
+        "\nGetting information from:\n",
+        f"https://security-tracker.debian.org/tracker/CVE-{arguments.cve_number}\n",
     )
 
-    try:
-        up_to_date, blob_hash = db_is_up_to_date()
-    except RequestException as error:
-        print(f"Checking if the db is up to date failed with {error}")
+    info_table, fixed_table = get_cve_tables(arguments)
+    cves = convert_tables(info_table, fixed_table)
+
+    print("Doing version and snapshot lookup")
+    versions_lookup(cves, arguments)
+    get_snapshots(cves, arguments)
+
+    total = len(cves)  # Supposing the list is collapsed
+    print(f"Found {total} possible configurations")
+
+    choice = choose_one(cves)
+
+    #This passes information to write_ build_ and run_ docker
+    if not arguments.release:
+        arguments.release = choice.release
+
+    print(
+        "My best guess is:\n",
+        f"Release {choice.release}\n",
+        f"Package {choice.package}\n",
+        f"Version {choice.vulnerable.version}\n",
+        f"Method {choice.vulnerable.method}\n",
+    )
+
+    download_db()
+    get_exploits(arguments)
+
+    # Idk Probably
+    vuln_fixed = True
+
+    source_lines = prepare_sources(choice.vulnerable.timestamp, vuln_fixed)
+    if not vuln_fixed:
+        print(f"\n\nVulnerability unfixed. Using a {LATEST_RELEASE} container.\n\n")
+        arguments.release = LATEST_RELEASE
+
+    print("Writing Dockerfile")
+    # Rewrite to work with choice
+    write_dockerfile(arguments, cves, source_lines)
+    write_cmdline(arguments)
+
+    if arguments.only_create_dockerfile:
+        print("My work here is done.")
         return
 
-    if not up_to_date:
-        print("Proceeding to download files_exploits.csv from exploit-db")
-    else:
-        print("db is up to date no need to download it")
+    build_docker(arguments)
+
+    if arguments.dont_run or RUNS_ON_GITHUB_ACTIONS:
+        print("My work here is done.")
         return
 
-    try:
-        response = requests.get(url, timeout=DEFAULT_TIMEOUT)
-        response.raise_for_status()
-    except RequestException as error:
-        print(f"Failed GET request from {url} with :\n{error}")
-        return
-
-    os.makedirs(destination_dir, exist_ok=True)
-
-    try:
-        with open(csv_file_path, "wb") as file:
-            file.write(response.content)
-        with open(hash_file_path, "w", encoding="utf-8") as file:
-            file.write(blob_hash)
-        print("File downloaded and hash updated.")
-    except IOError as error:
-        print(f"Failed to write file: {error}")
-
-
-def get_exploit(args):
-    try:
-        data = pd.read_csv("cached-files/files_exploits.csv")
-    except FileNotFoundError:
-        download_db()
-        try:
-            data = pd.read_csv("cached-files/files_exploits.csv")
-        except FileNotFoundError:
-            print("Failed to download db")
-            return
-
-    data = data[["id", "file", "verified", "codes", "tags", "aliases"]]
-
-    cve_id = f"CVE-{args.cve_number}"
-    # quel bonheur
-    data = data[
-        data["codes"].str.contains(cve_id, na=False)
-        | data["tags"].str.contains(cve_id, na=False)
-        | data["aliases"].str.contains(cve_id, na=False)
-    ]
-    data = list(zip(data["id"], data["file"], data["verified"]))
-
-    output_dir = Path(args.directory)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    if len(data) == 0:
-        print("No exploits Found")
-        return
-
-    for i, (exploit_id, path, verified) in enumerate(data):
-        # Building url
-        project_id = "40927511"
-        url = (
-            f"https://gitlab.com/api/v4/projects/{project_id}"
-            f"/repository/files/{path.replace('/', '%2F')}/raw?ref=main"
-        )
-
-        # Building path
-        file_extension = os.path.splitext(path)[1]
-        exploit_filename = f"exploit_{i}_{exploit_id}"
-        if verified:
-            exploit_filename += "_verified"
-        exploit_path = output_dir / Path(exploit_filename + file_extension)
-
-        # Fetching exploits
-        response = requests.get(url, timeout=DEFAULT_TIMEOUT)
-        if response.status_code == 200:
-            os.makedirs("cached-files", exist_ok=True)
-            with open(exploit_path, "wb") as file:
-                file.write(response.content)
-        else:
-            print(f"Failed to download file: {response.status_code} - {response.text}")
+    run_docker(arguments)
 
 
 if __name__ == "__main__":
-    # TODO: Understand how we deal with the (unfixed) tag now
-    # TODO: cve.vulnerable shouldn't be a list
-    # TODO: fix bug_lookup
     try:
-        arguments = argparse.Namespace()
-        arguments.cve_number = "2016-3714"
-        arguments.directory = "hey_listen!"
-
-        """
-
-        info_table, fixed_table = get_cve_tables(args)
-        cve_list = convert_tables(info_table, fixed_table)
-        versions_lookup(cve_list, args)
-
-        print("\nResults: \n")
-        for cve in cve_list:
-            print(f"{cve.to_string()}\n")
-        """
-        download_db()
-        # get_exploit(args)
-
+        main()
     except FatalError as fatal_exc:
         print(fatal_exc, file=sys.stderr)
         sys.exit(1)

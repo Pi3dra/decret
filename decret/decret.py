@@ -44,9 +44,9 @@ DEBIAN_RELEASES = [
     "buster",
     "bullseye",
     "bookworm", # These just helps to retrieve information easier
+    "trixie",
     "(unstable)",  # might be needed to treat it differently
     "sid",
-    "trixie",
 ]
 
 
@@ -500,12 +500,17 @@ def write_dockerfile(args: argparse.Namespace, cve_details, source_lines: list[s
         apt_flag = "--allow-unauthenticated --allow-downgrades"
 
     default_packages = " ".join(["aptitude", "nano", "adduser"])
-
+    print("WRITING PACKAGES")
     binary_packages = []
     for item in cve_details:
         for bin_name in item["bin_name"]:
             bin_name_and_version = [bin_name + f"={item['vuln_version']}"]
             binary_packages.extend(bin_name_and_version)
+    print(f"cve_details:") 
+    for cve in cve_details:
+          print(cve)
+    print(f"size {len(cve_details)}")
+    print(f"Packages : {binary_packages}") 
 
     #Old reseases should only use the snapshot sources
     clear_sources = args.release not in AVAILABLE_ON_MAIN_SITE
