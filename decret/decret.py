@@ -33,6 +33,7 @@ from selenium.webdriver.common.by import By
 from selenium.common.exceptions import WebDriverException
 
 DEBIAN_RELEASES = [
+    "sid",  #NOT IMPLEMENTED YET, last choice
     "woody",
     "sarge",
     "etch",
@@ -43,10 +44,8 @@ DEBIAN_RELEASES = [
     "stretch",
     "buster",
     "bullseye",
-    "bookworm", # These just helps to retrieve information easier
-    "trixie",
-    "(unstable)",  # might be needed to treat it differently
-    "sid",
+    "bookworm", 
+    "trixie",# This one just helps find information easier
 ]
 
 

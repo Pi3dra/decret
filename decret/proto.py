@@ -206,7 +206,7 @@ class Cve:
         return self
 
     # This could be cleaner with an iterator handling the bugids
-    # TODO: Split this
+    # TODO: Split this, And remove bpo s from versions
     # pylint: disable=(too-many-locals)
     def bug_version_lookup(self, args, check=False):
         self.init_vulnerable()
@@ -239,9 +239,9 @@ class Cve:
                             f"{cve_fullname} in page: {cve_fullname in content}"
                         )
                         if cve_fullname not in content:
-                            raise CVENotFound(
+                            print(
                                 "The bug linked to this cve through"
-                                " DSA doesn't seem to concern the current CVE"
+                                " DSA doesn't seem to concern the current CVE, Triying anyways"
                             )
                     soup = BeautifulSoup(content, "html.parser")
                     bug_info = soup.find("div", class_="buginfo")
@@ -327,12 +327,12 @@ class Cve:
         self.bug_version_lookup(args, check=True)
 
     def vulnerable_versions_lookup(self, args):
-        #global DEBUG
-        #DEBUG = self.release == "(unstable)"
+        global DEBUG
+        DEBUG = self.release == "stretch" or self.release == "buster"
         # TODO: Refactor this to send an error if a version isn't found,
         # This way it can be filtered
 
-        debug(f"FINDING version for: {self.package},{self.release}")
+        debug(f"\nFINDING version for: {self.package},{self.release}")
         try:
             debug(f"ATTEMTPING to find version with bugid")
             self.bug_version_lookup(args)
@@ -573,9 +573,20 @@ def main():
     if not arguments.release:
         arguments.release = choice.release
 
+    #TODO handle this properly
+    vuln_fixed = True
+
+    source_lines = prepare_sources(choice.vulnerable.timestamp, vuln_fixed)
+    if not vuln_fixed:
+        print(f"\n\nVulnerability unfixed. Using a {LATEST_RELEASE} container.\n\n")
+        arguments.release = LATEST_RELEASE
+
+    #TODO: put this in a more appropiate place
+    if arguments.release == "(unstable)":
+        arguments.release = "sid"
     print(
         "My best guess is:\n",
-        f"Release {choice.release}\n",
+        f"Release {arguments.release}\n",
         f"Package {choice.package}\n",
         f"Version {choice.vulnerable.version}\n",
         f"Method {choice.vulnerable.method}\n",
@@ -585,12 +596,7 @@ def main():
     get_exploits(arguments)
 
     # Idk Probably
-    vuln_fixed = True
 
-    source_lines = prepare_sources(choice.vulnerable.timestamp, vuln_fixed)
-    if not vuln_fixed:
-        print(f"\n\nVulnerability unfixed. Using a {LATEST_RELEASE} container.\n\n")
-        arguments.release = LATEST_RELEASE
 
     print("Writing Dockerfile")
     # Rewrite to work with choice

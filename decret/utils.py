@@ -335,7 +335,7 @@ def write_dockerfile(args: argparse.Namespace, cve_list, source_lines: list[str]
     template = jinja2.Environment().from_string(template_content)
 
 
-    if args.release in DEBIAN_RELEASES[:7]:
+    if args.release in DEBIAN_RELEASES[:8]:
         apt_flag = "--force-yes"
     else:
         apt_flag = "--allow-unauthenticated --allow-downgrades"
