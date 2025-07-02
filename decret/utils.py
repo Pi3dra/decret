@@ -334,7 +334,7 @@ def write_dockerfile(args: argparse.Namespace, cve_list, source_lines: list[str]
     template_content = src_template.read_text()
     template = jinja2.Environment().from_string(template_content)
 
-    #This should cover up to jessie
+    # This should cover up to jessie
     if args.release in DEBIAN_RELEASES[:7]:
         apt_flag = "--force-yes"
     else:
@@ -371,7 +371,7 @@ def write_dockerfile(args: argparse.Namespace, cve_list, source_lines: list[str]
 
 def build_docker(args):
     print("Building the Docker image.")
-    #This is needed as we don't know in advance which release it will choose on its own
+    # This is needed as we don't know in advance which release it will choose on its own
     prepend = "" if RUNS_ON_GITHUB_ACTIONS else f"{args.release}/"
     docker_image_name = f"{prepend}cve-{args.cve_number}"
 

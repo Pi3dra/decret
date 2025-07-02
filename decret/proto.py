@@ -17,7 +17,6 @@ from decret.utils import (
     download_db,
     get_exploits,
     init_decret,
-    init_shared_directory,
     write_cmdline,
     prepare_sources,
     write_dockerfile,
@@ -28,7 +27,7 @@ from decret.utils import (
 METHOD_PRIORITY = {"Vulnerable": 4, "Bug": 3, "DSA": 2, "N-1": 1}
 
 RELEASE_PRIORITY = {name: i for i, name in enumerate(DEBIAN_RELEASES)}
-#For the time being as this is not stable
+# For the time being as this is not stable
 RELEASE_PRIORITY["sid"] = 0
 
 DEBUG = False
@@ -330,14 +329,14 @@ class Cve:
         self.bug_version_lookup(args, check=True)
 
     def vulnerable_versions_lookup(self, args):
-        global DEBUG
-        DEBUG = self.release == "stretch" or self.release == "buster"
+        #global DEBUG
+        #DEBUG = self.release == "stretch" or self.release == "buster"
         # TODO: Refactor this to send an error if a version isn't found,
         # This way it can be filtered
 
         debug(f"\nFINDING version for: {self.package},{self.release}")
         try:
-            debug(f"ATTEMTPING to find version with bugid")
+            debug("ATTEMTPING to find version with bugid")
             self.bug_version_lookup(args)
         except (SearchError, CVENotFound) as error:
             debug(f"BUGS failed with:\n\t{error}\n")
@@ -361,14 +360,14 @@ class Cve:
                         debug("ATTEMPTING to find version with N-1")
                         try:
                             self.preceding_version_lookup()
-                        except (SearchError, CVENotFound) as error:
-                            debug(f"N-1 failed with:\n\t{error}")
+                        except (SearchError, CVENotFound) as error3:
+                            debug(f"N-1 failed with:\n\t{error3}")
             else:
                 try:
                     debug("ATTEMPTING to find version with N-1")
                     self.preceding_version_lookup()
-                except (SearchError, CVENotFound) as error:
-                    debug(f"N-1 failed with:\n\t{error}")
+                except (SearchError, CVENotFound) as error2:
+                    debug(f"N-1 failed with:\n\t{error2}")
 
 
 def get_cve_tables(args: argparse.Namespace):
@@ -455,7 +454,7 @@ def filter_tables(info_table, fixed_table):
         # TODO: Implement support for (unstable)
         if "(not affected)" not in line and
         # This line might not be useful
-        any(release in line for release in DEBIAN_RELEASES)
+        any(release in line for release in DEBIAN_RELEASES + ["(unstable)"])
     ]
 
     info_table = [
@@ -572,11 +571,11 @@ def main():
 
     choice = choose_one(cves)
 
-    #This passes information to write_ build_ and run_ docker
+    # This passes information to write_ build_ and run_ docker
     if not arguments.release:
         arguments.release = choice.release
 
-    #TODO handle this properly
+    # TODO handle this properly
     vuln_fixed = True
 
     source_lines = prepare_sources(choice.vulnerable.timestamp, vuln_fixed)
@@ -584,7 +583,7 @@ def main():
         print(f"\n\nVulnerability unfixed. Using a {LATEST_RELEASE} container.\n\n")
         arguments.release = LATEST_RELEASE
 
-    #TODO: put this in a more appropiate place
+    # TODO: put this in a more appropiate place
     if arguments.release == "(unstable)":
         arguments.release = "sid"
     print(
@@ -599,7 +598,6 @@ def main():
     get_exploits(arguments)
 
     # Idk Probably
-
 
     print("Writing Dockerfile")
     # Rewrite to work with choice

@@ -7,12 +7,13 @@ import re
 
 @pytest.fixture(scope="session")
 def cve_numbers():
-    file_path = "tests/test.txt"
+    file_path = "tests/test-material/test.txt"
     try:
         with open(file_path, "r") as file:
             return [line.strip() for line in file if line.strip()]
     except Exception as e:
         pytest.fail(f"Error reading CVE file: {str(e)}")
+
 
 # ===================== TESTING Finding and cleaning Tables =====================
 
@@ -48,7 +49,9 @@ def filtered_tables(found_tables):
 validation_rules_fixed = [
     lambda val: val != "",  # Package: non-empty
     lambda val: val != "",  # Source: non-empty
-    lambda val: any(val.startswith(release) for release in DEBIAN_RELEASES),  # Release
+    lambda val: any(
+        val.startswith(release) for release in DEBIAN_RELEASES + ["(unstable)"]
+    ),  # Release
     lambda val: val in ["(unfixed)", "(not affected)"] or val != "",  # Fixed
     lambda val: val
     in ["unimportant", "low", "medium", "high", "end-of-life", ""],  # Urgency
@@ -58,7 +61,9 @@ validation_rules_fixed = [
 
 validation_rules_info = [
     lambda val: val != "",  # Package
-    lambda val: any(val.startswith(release) for release in DEBIAN_RELEASES),  # Release
+    lambda val: any(
+        val.startswith(release) for release in DEBIAN_RELEASES + ["(unstable)"]
+    ),  # Release
     lambda val: val != "",  # Version
     lambda val: val in ["fixed", "vulnerable"],  # Status
 ]
@@ -119,8 +124,7 @@ def check_cve(config, package, release, fixed, advisory=None, bugid=None):
         and config.release == release
         and config.fixed == fixed
         and config.advisory == advisory
-        and
-        (config.bugids is None or any(bug[0] == bugid for bug in config.bugids) )
+        and (config.bugids is None or any(bug[0] == bugid for bug in config.bugids))
     )
 
 
@@ -172,6 +176,11 @@ def test_converted_list(converted_tables):
         assert len(cve[cve_number]) == len(expected_entries)
 
         for package, release, fixed, advisory, bugids in expected_entries:
+            print(
+                f"{cve_number}: \n "
+                f"{' '.join([cve.to_string() for cve in cve[cve_number]])}\n"
+                f"{package} {release} {fixed} {advisory} {bugids}"
+            )
             assert any(
                 check_cve(cve, package, release, fixed, advisory, bugids)
                 for cve in cve[cve_number]
@@ -199,11 +208,11 @@ def vuln_configs(converted_tables):
 
 
 def count_configs(vuln_configs):
-    counter = {"vulnerable": 0, "DSA": 0, "N-1": 0, "Bug": 0}
+    counter = {"Vulnerable": 0, "DSA": 0, "N-1": 0, "Bug": 0}
     results = {}
 
     for cve_number, cve_list in vuln_configs.items():
-        counter2 = {"vulnerable": 0, "DSA": 0, "N-1": 0, "Bug": 0}
+        counter2 = {"Vulnerable": 0, "DSA": 0, "N-1": 0, "Bug": 0}
         for cve in cve_list:
             for config in cve.vulnerable:
                 counter2[config.method] += 1
@@ -215,7 +224,7 @@ def count_configs(vuln_configs):
 
 def check_counts(count, vuln, dsa, preceding, bug):
     return (
-        count["vulnerable"] == vuln
+        count["Vulnerable"] == vuln
         and count["DSA"] == dsa
         and count["N-1"] == preceding
         and count["Bug"] == bug
@@ -227,7 +236,7 @@ def test_finding_vuln_configs(vuln_configs):
 
     # is a global counter really useful?
     cve = results[1]
-    
+
     # For the time being we only reason based on
     # the number of vulnerable configs found and the
     # methods used, not if the version is vulnerable or not,

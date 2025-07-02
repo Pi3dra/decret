@@ -43,13 +43,13 @@ DEBIAN_RELEASES = [
     "stretch",
     "buster",
     "bullseye",
-    "bookworm", 
-    "trixie",# This one just helps find information easier
-    "sid",  #NOT IMPLEMENTED YET, last choice
+    "bookworm",
+    "trixie",  # This one just helps find information easier
+    "sid",  # NOT IMPLEMENTED YET, last choice
 ]
 
 
-#The releases available here: http://ftp.debian.org/debian/ crash if the
+# The releases available here: http://ftp.debian.org/debian/ crash if the
 # sources.list is overwriten to only use the snapshot, meanwhile those
 # who are not here need to strictly use the snapshot if not they crash
 AVAILABLE_ON_MAIN_SITE = DEBIAN_RELEASES[-5:]
@@ -60,9 +60,9 @@ DEFAULT_TIMEOUT = 10
 
 DOCKER_SHARED_DIR = "/tmp/decret"
 
-#makes testing easier:
-#-Copies the mounted folder with exploits on the image
-#-Avoids running the image interactively after build
+# makes testing easier:
+# -Copies the mounted folder with exploits on the image
+# -Avoids running the image interactively after build
 RUNS_ON_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
 
 
@@ -173,7 +173,7 @@ def arg_parsing(args=None):
     namespace = parser.parse_args(args)
 
     if re.match(r"^CVE-2\d{3}-(0\d{3}|[1-9]\d{3,})$", namespace.cve_number):
-        namespace.cve_number=namespace.cve_number[4:]
+        namespace.cve_number = namespace.cve_number[4:]
     elif not re.match(r"^2\d{3}-(0\d{3}|[1-9]\d{3,})$", namespace.cve_number):
         parser.print_usage(sys.stderr)
         raise FatalError("Wrong CVE format.")
@@ -448,7 +448,7 @@ def get_hash_and_bin_names(
 def get_snapshot(cve_details: list[dict]):
     snapshot_id = []
     for item in cve_details:
-        value = item.get('hash')
+        value = item.get("hash")
         if value is None:
             print(f"Not found in '{item}'")
         else:
@@ -456,7 +456,6 @@ def get_snapshot(cve_details: list[dict]):
 
             response = requests.get(url, timeout=DEFAULT_TIMEOUT).json()["result"][-1]
             snapshot_id.append(response["first_seen"])
-        
 
     if not snapshot_id:
         raise Exception("Snapshot id not found.")
@@ -479,7 +478,9 @@ def write_cmdline(args: argparse.Namespace):
 
 
 def prepare_sources(snapshot_id: str, vuln_fixed: bool):
-    options = "[check-valid-until=no allow-insecure=yes allow-downgrade-to-insecure=yes]"
+    options = (
+        "[check-valid-until=no allow-insecure=yes allow-downgrade-to-insecure=yes]"
+    )
     url = f"http://snapshot.debian.org/archive/debian/{snapshot_id}/"
     if vuln_fixed:
         release = ["testing", "stable", "unstable"]
@@ -505,13 +506,13 @@ def write_dockerfile(args: argparse.Namespace, cve_details, source_lines: list[s
         for bin_name in item["bin_name"]:
             bin_name_and_version = [bin_name + f"={item['vuln_version']}"]
             binary_packages.extend(bin_name_and_version)
-    print(f"cve_details:") 
+    print(f"cve_details:")
     for cve in cve_details:
-          print(cve)
+        print(cve)
     print(f"size {len(cve_details)}")
-    print(f"Packages : {binary_packages}") 
+    print(f"Packages : {binary_packages}")
 
-    #Old reseases should only use the snapshot sources
+    # Old reseases should only use the snapshot sources
     clear_sources = args.release not in AVAILABLE_ON_MAIN_SITE
 
     content = template.render(
@@ -523,7 +524,7 @@ def write_dockerfile(args: argparse.Namespace, cve_details, source_lines: list[s
         package_name=" ".join(binary_packages),
         run_lines=args.run_lines,
         cmd_line=args.cmd_line,
-        copy_exploits=RUNS_ON_GITHUB_ACTIONS
+        copy_exploits=RUNS_ON_GITHUB_ACTIONS,
     )
     target_dockerfile.write_text(content)
 
@@ -595,6 +596,7 @@ def init_decret():  # pragma: no cover
             args.selenium = None
 
     return args, browser
+
 
 def main():  # pragma: no cover
     args, browser = init_decret()
