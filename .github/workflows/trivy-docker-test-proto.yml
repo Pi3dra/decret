@@ -1,4 +1,4 @@
-name: Trivy CVE Tests
+name: Trivy CVE Tests (PROTO)
 
 #This only runs after building and pushing containers to GHCR
 on:

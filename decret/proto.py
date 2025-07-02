@@ -239,9 +239,9 @@ class Cve:
                             f"{cve_fullname} in page: {cve_fullname in content}"
                         )
                         if cve_fullname not in content:
-                            print(
+                            raise SearchError(
                                 "The bug linked to this cve through"
-                                " DSA doesn't seem to concern the current CVE, Triying anyways"
+                                " DSA doesn't seem to concern the current CVE"
                             )
                     soup = BeautifulSoup(content, "html.parser")
                     bug_info = soup.find("div", class_="buginfo")

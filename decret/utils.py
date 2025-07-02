@@ -371,7 +371,9 @@ def write_dockerfile(args: argparse.Namespace, cve_list, source_lines: list[str]
 
 def build_docker(args):
     print("Building the Docker image.")
-    docker_image_name = f"{args.release}/cve-{args.cve_number}"
+    #This is needed as we don't know in advance which release it will choose on its own
+    prepend = "" if RUNS_ON_GITHUB_ACTIONS else f"{args.release}/"
+    docker_image_name = f"{prepend}cve-{args.cve_number}"
 
     if args.do_not_use_sudo:
         build_cmd = []
