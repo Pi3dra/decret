@@ -334,8 +334,8 @@ def write_dockerfile(args: argparse.Namespace, cve_list, source_lines: list[str]
     template_content = src_template.read_text()
     template = jinja2.Environment().from_string(template_content)
 
-
-    if args.release in DEBIAN_RELEASES[:8]:
+    #This should cover up to jessie
+    if args.release in DEBIAN_RELEASES[:7]:
         apt_flag = "--force-yes"
     else:
         apt_flag = "--allow-unauthenticated --allow-downgrades"

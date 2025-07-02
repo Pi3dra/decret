@@ -33,7 +33,6 @@ from selenium.webdriver.common.by import By
 from selenium.common.exceptions import WebDriverException
 
 DEBIAN_RELEASES = [
-    "sid",  #NOT IMPLEMENTED YET, last choice
     "woody",
     "sarge",
     "etch",
@@ -46,13 +45,14 @@ DEBIAN_RELEASES = [
     "bullseye",
     "bookworm", 
     "trixie",# This one just helps find information easier
+    "sid",  #NOT IMPLEMENTED YET, last choice
 ]
 
 
 #The releases available here: http://ftp.debian.org/debian/ crash if the
 # sources.list is overwriten to only use the snapshot, meanwhile those
 # who are not here need to strictly use the snapshot if not they crash
-AVAILABLE_ON_MAIN_SITE = DEBIAN_RELEASES[-6:]
+AVAILABLE_ON_MAIN_SITE = DEBIAN_RELEASES[-5:]
 
 LATEST_RELEASE = DEBIAN_RELEASES[-1]
 

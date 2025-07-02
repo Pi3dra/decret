@@ -26,7 +26,10 @@ from decret.utils import (
 )
 
 METHOD_PRIORITY = {"Vulnerable": 4, "Bug": 3, "DSA": 2, "N-1": 1}
+
 RELEASE_PRIORITY = {name: i for i, name in enumerate(DEBIAN_RELEASES)}
+#For the time being as this is not stable
+RELEASE_PRIORITY["sid"] = 0
 
 DEBUG = False
 
