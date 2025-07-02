@@ -72,7 +72,6 @@ jobs:
           STRIPPED_CVE="${CVE_NAME#cve-}"
           #Build, tag and push in order
           python3 -m decret.proto -n "$STRIPPED_CVE" ${{ matrix.options }} 
-          docker push "ghcr.io/pi3dra/decret/$CVE_NAME-proto:latest"
 
       - name: TAG Docker Images
         run: docker tag "$CVE_NAME" "ghcr.io/pi3dra/decret/$CVE_NAME-proto:latest"
