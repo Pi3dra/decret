@@ -2,12 +2,6 @@ name: Trivy CVE Tests
 
 #This only runs after building and pushing containers to GHCR
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - .github/workflows/trivy-docker-test.yml
-
   workflow_run:
     workflows: ["Build and Push containers to GHCR"]
     types:
@@ -22,10 +16,11 @@ jobs:
     strategy:
       matrix:
         cve:
-          - cve-2016-3714
-          - cve-2014-0160
-          - cve-2020-7247
-          - cve-2023-22809
+          - CVE-2016-3714
+          - CVE-2014-0160
+          - CVE-2020-7247
+          - CVE-2023-22809
+      fail-fast: false
 
     steps:
       - name: Run Trivy scan for ${{ matrix.cve }}
