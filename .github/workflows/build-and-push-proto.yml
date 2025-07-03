@@ -24,13 +24,13 @@ jobs:
         include:
         #I don't know if the directory flag is really needed here 
         #but just to be safe and prevent potential overwriting by the parallel matrix
-          - cve: cve-2016-3714
+          - cve: CVE-2016-3714
             options: "--directory imagetragick" 
-          - cve: cve-2014-0160
+          - cve: CVE-2014-0160
             options: "--directory heartbleed"
-          - cve: cve-2020-7247
+          - cve: CVE-2020-7247
             options: "--directory opensmtpd"
-          - cve: cve-2023-22809
+          - cve: CVE-2023-22809
             options: "--directory sudoedit"
 
     permissions:
