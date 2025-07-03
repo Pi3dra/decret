@@ -25,16 +25,16 @@ jobs:
         #I don't know if the directory flag is really needed here 
         #but just to be safe and prevent potential overwriting by the parallel matrix
           - distro: jessie
-            cve: CVE-2016-3714
+            cve: cve-2016-3714
             options: "--directory imagetragick" 
           - distro: bullseye
-            cve: CVE-2014-0160
+            cve: cve-2014-0160
             options: "--directory heartbleed"
           - distro: bullseye
-            cve: CVE-2020-7247
+            cve: cve-2020-7247
             options: "--directory opensmtpd"
           - distro: bullseye
-            cve: CVE-2023-22809
+            cve: cve-2023-22809
             options: "--directory sudoedit"
 
     permissions:

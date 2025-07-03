@@ -481,7 +481,7 @@ def convert_tables(info_table, fixed_table):
 
         config = Cve(
             package=line[0],
-            release=line[2],
+            release="sid" if line[2] == "(unstable)" else line[2],
             fixed=line[3],
             advisory=None if line[5] == "" else line[5],
             bugids=None if bug_id is None else [(bug_id, False)],

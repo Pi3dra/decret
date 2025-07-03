@@ -16,10 +16,10 @@ jobs:
     strategy:
       matrix:
         cve:
-          - CVE-2016-3714
-          - CVE-2014-0160
-          - CVE-2020-7247
-          - CVE-2023-22809
+          - cve-2016-3714
+          - cve-2014-0160
+          - cve-2020-7247
+          - cve-2023-22809
       fail-fast: false
 
     steps:
@@ -33,7 +33,8 @@ jobs:
 
       - name: Check for ${{ matrix.cve }} in scan results
         run: |
-          if ! grep -q "${{ matrix.cve }}" trivy-results.json; then
+          CVE_UPPER=$(echo "${{ matrix.cve }}" | sed 's/^cve/CVE/')
+          if ! grep -q "$CVE_UPPER" trivy-results.json; then
             echo "${{ matrix.cve }} not found! Failing the job."
             exit 1
           else
