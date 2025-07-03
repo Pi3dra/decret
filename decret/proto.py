@@ -30,7 +30,7 @@ RELEASE_PRIORITY = {name: i for i, name in enumerate(DEBIAN_RELEASES)}
 # For the time being as this is not stable
 RELEASE_PRIORITY["sid"] = 0
 
-DEBUG = False
+DEBUG = True
 
 
 class SearchError(BaseException):
@@ -332,6 +332,7 @@ class Cve:
         #global DEBUG
         #DEBUG = self.release == "stretch" or self.release == "buster"
         # TODO: Refactor this to send an error if a version isn't found,
+        # TODO: It would be nice to skip this if we find vulnerable or unfixed on the results
         # This way it can be filtered
 
         debug(f"\nFINDING version for: {self.package},{self.release}")
