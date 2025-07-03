@@ -214,11 +214,18 @@ def arg_parsing(args=None):
         help="Specify the vulnerable version number of the package",
     )
     parser.add_argument(
-        "-p",
-        "--package",
+        "--bin_package",
         dest="bin_package",
         type=str,
         help="Name of the binary package targeted.",
+    )
+    parser.add_argument(
+        "-p",
+        "--package",
+        dest="package",
+        type=str,
+        help="Name of the package targeted.",
+
     )
     parser.add_argument(
         "--port",
