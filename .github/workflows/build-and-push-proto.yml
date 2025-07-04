@@ -32,6 +32,8 @@ jobs:
             options: "--directory opensmtpd"
           - cve: cve-2023-22809
             options: "--directory sudoedit"
+          - cve: cve-2022-1664
+            options: "--directory dpkg"
 
     permissions:
       contents: read

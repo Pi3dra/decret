@@ -37,7 +37,7 @@ jobs:
         docker pull ghcr.io/pi3dra/decret/cve-2020-7247:latest
         docker tag ghcr.io/pi3dra/decret/cve-2020-7247:latest cve-2020-7247
 
-    - name: Test vuln (CVE-2016-3714)
+    - name: Test vuln (CVE-2020-7247)
       run: |
         #Setting up opensmtpd properly , read examples/CVE-2020-7247
         docker run cve-2020-7247 sh -c "sed -i s/localhost/127.0.0.1/ /etc/smtpd.conf && /etc/init.d/opensmtpd start"
