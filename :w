@@ -341,32 +341,41 @@ class Cve:
 
 
     def vulnerable_versions_lookup(self, args):
+        # TODO: Refactor this to send an error if a version isn't found,
         debug(f"\nFINDING version for: {self.package},{self.release}")
         try:
-            debug(f"ATTEMTPING to find version with bugid")
+            debug("ATTEMTPING to find version with bugid")
             self.bug_version_lookup(args)
         except (SearchError, CVENotFound) as error:
-            debug(f"BUGID failed with:\n\t{error}\n")
-            debug("ATTEMPTING to find version with DSA")
-            try:
-                self.dsa_version_lookup(args)
-            except (SearchError, CVENotFound) as error2:
-                debug(f"DSA failed with:\n\t{error2}\n")
+            debug(f"BUGS failed with:\n\t{error}\n")
+            if self.advisory:
+                debug("ATTEMPTING to find version with DSA")
+                debug(self.advisory)
+                try:
+                    self.dsa_version_lookup(args)
+                except (SearchError, CVENotFound) as error2:
+                    debug(f"DSA failed with:\n\t{error2}\n")
 
-                # DSA lookup can find many bugids, which can fail
-                # We only search with N-1 if all of them failed
-                found_any = any(
-                config.method == "DSA"
-                for config in self.vulnerable
-                    if self.vulnerable is not None
-                )
+                    # DSA lookup can find many bugids, which can fail
+                    # We only search with N-1 if all of them failed
+                    found_any = any(
+                        config.method == "DSA"
+                        for config in self.vulnerable
+                        if self.vulnerable is not None
+                    )
 
-                if not found_any:
-                    debug("ATTEMPTING to find version with N-1")
-                    try:
-                        self.preceding_version_lookup()
-                    except (SearchError, CVENotFound) as error3:
+                    if not found_any:
+                        debug("ATTEMPTING to find version with N-1")
+                        try:
+                            self.preceding_version_lookup()
+                        except (SearchError, CVENotFound) as error3:
                             debug(f"N-1 failed with:\n\t{error3}")
+            else:
+                try:
+                    debug("ATTEMPTING to find version with N-1")
+                    self.preceding_version_lookup()
+                except (SearchError, CVENotFound) as error2:
+                    debug(f"N-1 failed with:\n\t{error2}")
 
 
 def check_tables_are_valid():
@@ -375,9 +384,8 @@ def check_tables_are_valid():
 
 def get_cve_tables(args: argparse.Namespace):
     url = f"https://security-tracker.debian.org/tracker/CVE-{args.cve_number}"
-    fixed_table = []
-    info_table = []
-
+    fixed_table = None
+    info_table = None
     try:
         response = requests.get(url, timeout=DEFAULT_TIMEOUT)
         response.raise_for_status()
@@ -403,41 +411,38 @@ def get_cve_tables(args: argparse.Namespace):
                 if header == header_fixed:
                     fixed_table = elt
             
-        if info_table == [] and fixed_table == []:
+        if info_table is None and fixed_table is None:
             raise CVENotFound(
                 "Decret didn't find any tables on the security tracker site"
-                " CVE is probably NOT-FOR-US or RESERVED"
         )
 
+        #TODO:FINISH HIM
         info_table, fixed_table = clean_tables(info_table, fixed_table)
         info_table, fixed_table = filter_tables(info_table, fixed_table, args)
 
-        if info_table == [] and fixed_table == []:
+        if info_table is None and fixed_table is None:
             raise CVENotFound(
-                "CVE is probably ITP this is not replicable"
-                f"{', seems like the specified release was never vulnerable'
-                if args.release is not None else ""}"
-                ", or the specified filtering is incorrect"
-        )
-
+                "CVE is either ITP,NOT-FOR-US,REJECTED, or it doesn't affect any debian release"
+            )
     except RequestException as error:
-        raise CVENotFound(f"{error}") from error
+        print(f"Failed to retrieve CVE data from {url}: {error}")
 
     return info_table, fixed_table
 
 
 def clean_tables(info_table, fixed_table):
-    if fixed_table != []:
+    if fixed_table is not None:
         fixed_table = list(fixed_table.find_all("td"))
         fixed_table = [line.get_text() for line in fixed_table]
         fixed_table = [fixed_table[i : i + 7] for i in range(0, len(fixed_table), 7)]
     else:
         fixed_table = []
 
-    if info_table != []:
+    if info_table is not None:
         info_table = list(info_table.find_all("td"))
         info_table = [line.get_text() for line in info_table]
         info_table = [info_table[i : i + 4] for i in range(0, len(info_table), 4)]
+
     else:
         info_table = []
 
@@ -456,6 +461,7 @@ def filter_tables(info_table, fixed_table, args):
     fixed_table = [
         line
         for line in fixed_table
+        # TODO: Implement support for (unstable)
         if "(not affected)" not in line
         and (not args.release or args.release in line)
         and any(release in line for release in DEBIAN_RELEASES + ["(unstable)"])
@@ -470,6 +476,13 @@ def filter_tables(info_table, fixed_table, args):
             and any(release in line for release in DEBIAN_RELEASES)
         )
     ]
+
+    if fixed_table == [] and info_table == []:
+        #IMPROVEMENT: Could be adapted to try and build on recent releases nevertheless
+        raise CVENotFound("Decret failed to find possible configurations"
+                          f"{' seems like the specified release was never vulnerable' 
+                          if args.release is not None else ""}"
+        )
 
     return info_table, fixed_table
 
@@ -552,6 +565,9 @@ def choose_one(cve_list,args):
 
     return (collapsed_list, best)
 
+    # TODO: Understand how we deal with the (unfixed) tag now
+
+
 def main():
     # Run nteractively
     arguments = init_decret()
@@ -562,12 +578,7 @@ def main():
         f"https://security-tracker.debian.org/tracker/CVE-{arguments.cve_number}\n",
     )
 
-    try:
-        info_table, fixed_table = get_cve_tables(arguments)
-    except CVENotFound as error:
-        print(f"Decret failed to retrieve the data with: \n{error}")
-        return
-
+    info_table, fixed_table = get_cve_tables(arguments)
     cves = convert_tables(info_table, fixed_table)
 
     print("Doing version and snapshot lookup")
@@ -583,13 +594,17 @@ def main():
     if not arguments.release:
         arguments.release = choice.release
 
+    # TODO handle this properly
+    vuln_fixed = True
 
-    vuln_fixed = choice.vulnerable.version == "(unfixed)"
-    source_lines = prepare_sources(choice.vulnerable.timestamp, vuln_fixed or arguments.release == "sid")
+    source_lines = prepare_sources(choice.vulnerable.timestamp, vuln_fixed)
     if not vuln_fixed:
         print(f"\n\nVulnerability unfixed. Using a {LATEST_RELEASE} container.\n\n")
         arguments.release = LATEST_RELEASE
 
+    # TODO: put this in a more appropiate place
+    if arguments.release == "(unstable)":
+        arguments.release = "sid"
     print(
         "My best guess is:\n",
         f"Release {arguments.release}\n",
@@ -600,6 +615,8 @@ def main():
 
     download_db()
     get_exploits(arguments)
+
+    # Idk Probably
 
     print("Writing Dockerfile")
     write_dockerfile(arguments, collapsed_list, source_lines)

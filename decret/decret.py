@@ -45,7 +45,6 @@ DEBIAN_RELEASES = [
     "bullseye",
     "bookworm",
     "trixie",  # This one just helps find information easier
-    "sid",  # NOT IMPLEMENTED YET, last choice
 ]
 
 
