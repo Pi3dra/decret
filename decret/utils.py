@@ -38,7 +38,7 @@ def db_is_up_to_date():
     """
     Returns a tuple ( bool * string) indicating if the db needs updating and the new hash
     """
-    project_id = "40927511"  # Project ID for exploit-db
+    project_id = "40927511"  
     file_path = "files_exploits.csv"
     destination_dir = "cached-files"
     hash_file_path = os.path.join(destination_dir, "files_exploits.hash")
@@ -124,7 +124,6 @@ def get_exploits(args):
     data = data[["id", "file", "verified", "codes", "tags", "aliases"]]
 
     cve_id = f"CVE-{args.cve_number}"
-    # quel bonheur
     data = data[
         data["codes"].str.contains(cve_id, na=False)
         | data["tags"].str.contains(cve_id, na=False)
@@ -173,7 +172,6 @@ def get_exploits(args):
 
 
 def init_decret():  # pragma: no cover
-    # First handle the parameters
     args = arg_parsing()
     check_requirements()
     init_shared_directory(args)
@@ -343,18 +341,13 @@ def write_dockerfile(args: argparse.Namespace, cve_list, source_lines: list[str]
     default_packages = " ".join(["aptitude", "nano", "adduser"])
 
     binary_packages = []
-    print("WRITING PACKAGES")
-    # TODO: ADD -r flag to filter
     for cve in cve_list:
         if cve.release == args.release:
             for bin_name in cve.vulnerable.bin_names:
                 bin_name_and_version = [bin_name + f"={cve.vulnerable.version}"]
                 binary_packages.extend(bin_name_and_version)
-    print(f"size {len(cve_list)}")
-    print(f"Packages : {binary_packages}")
 
     # Old reseases should only use the snapshot sources
-
     content = template.render(
         clear_sources=args.release not in AVAILABLE_ON_MAIN_SITE,
         debian_release=args.release,

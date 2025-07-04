@@ -129,8 +129,8 @@ class Cve:
     # pylint: disable=too-many-arguments
     def __init__(
         self,
-        package=None,
-        release=None,
+        package,
+        release,
         fixed=None,
         advisory=None,
         bugids=None,
@@ -207,9 +207,62 @@ class Cve:
 
         return self
 
-    # This could be cleaner with an iterator handling the bugids
-    # TODO: Split this, And remove bpo s from versions
-    # pylint: disable=(too-many-locals)
+    # HELPERS: of bug_version_lookup
+    @staticmethod
+    def _bugreport_mentions_cve(page_content, cve_number):
+        cve_fullname = f"CVE-{cve_number}"
+        debug(
+            f"Checking if there's a DSA->bug->link\n"
+            f"{cve_fullname} in page: {cve_fullname in page_content}"
+        )
+        if cve_fullname not in page_content:
+            raise SearchError(
+                "The bug linked to this cve through"
+                " DSA doesn't seem to concern the current CVE"
+            )
+
+    @staticmethod
+    def _extract_versions(page_content, bugid):
+        soup = BeautifulSoup(page_content, "html.parser")
+        bug_info = soup.find("div", class_="buginfo")
+        if not bug_info or not isinstance(bug_info, Tag):
+            raise CVENotFound(f"Could not find valid buginfo div for bug {bugid}")
+
+        versions = []
+
+        for p_tag in bug_info.find_all("p"):
+            text = p_tag.get_text(strip=True)
+            if text.startswith(("Found in version ", "Found in versions ")):
+                version = text[len("Found in version ") :].strip().split(", ")
+                versions.extend(version)
+        debug(versions)
+
+        return versions
+
+    def _handle_versions(self, versions, dsa):
+        # We treat cases where one bug report concerns many versions
+        for version in versions:
+            # In some bug reports the packagename is prepended/ to the version
+            # We also backported versions
+            if "bpo" in version:
+                continue
+
+            slash_pos = version.find("/")
+            if slash_pos != -1:
+                clean_version = version[slash_pos + 1 :]
+            else:
+                clean_version = version
+
+            vulnerable_config = VulnerableConfig(
+                version=clean_version, method="Bug" if not dsa else "DSA"
+            )
+
+            assert self.vulnerable is not None
+            self.vulnerable.append(vulnerable_config)
+        if not versions:
+            raise CVENotFound(f"bug { self.bugids} has no 'Found in version' tag")
+
+
     def bug_version_lookup(self, args, check=False):
         self.init_vulnerable()
 
@@ -235,51 +288,9 @@ class Cve:
 
                     # Check if we find the CVE mentioned anywhere in the bug report
                     if check:
-                        cve_fullname = f"CVE-{args.cve_number}"
-                        debug(
-                            f"Checking if there's a DSA->bug->link\n"
-                            f"{cve_fullname} in page: {cve_fullname in content}"
-                        )
-                        if cve_fullname not in content:
-                            raise SearchError(
-                                "The bug linked to this cve through"
-                                " DSA doesn't seem to concern the current CVE"
-                            )
-                    soup = BeautifulSoup(content, "html.parser")
-                    bug_info = soup.find("div", class_="buginfo")
-                    if not bug_info or not isinstance(bug_info, Tag):
-                        raise CVENotFound(
-                            f"Could not find valid buginfo div for bug {bugid}"
-                        )
-
-                    versions = []
-
-                    for p_tag in bug_info.find_all("p"):
-                        text = p_tag.get_text(strip=True)
-                        if text.startswith(("Found in version ", "Found in versions ")):
-                            version = (
-                                text[len("Found in version ") :].strip().split(", ")
-                            )
-                            versions.extend(version)
-                    debug(versions)
-
-                    # We treat cases where one bug concerns many versions
-                    for version in versions:
-                        # In some bug reports the packagename is prepended/ to the version
-                        slash_pos = version.find("/")
-                        if slash_pos != -1:
-                            clean_version = version[slash_pos + 1 :]
-                        else:
-                            clean_version = version
-
-                        vulnerable_config = VulnerableConfig(
-                            version=clean_version, method="Bug" if not check else "DSA"
-                        )
-                        self.vulnerable.append(vulnerable_config)
-                    if not versions:
-                        raise CVENotFound(
-                            f"bug { self.bugids} has no 'Found in version' tag"
-                        )
+                        self._bugreport_mentions_cve(content, args.cve_number)
+                    versions = self._extract_versions(content, bugid)
+                    self._handle_versions(versions, check)
 
                 # TODO: if this generates many versions it should add new cves
                 # instead of appending vuln_configs
@@ -296,7 +307,7 @@ class Cve:
         if self.advisory is None:
             raise SearchError(
                 f"package: {self.package} for {self.release} has no DSA/DLA"
-            )
+        )
 
         url = (
             f"https://www.debian.org/"
@@ -328,12 +339,9 @@ class Cve:
         self.bugids.extend(bug_ids)
         self.bug_version_lookup(args, check=True)
 
-    def vulnerable_versions_lookup(self, args):
-        #global DEBUG
-        #DEBUG = self.release == "stretch" or self.release == "buster"
-        # TODO: Refactor this to send an error if a version isn't found,
-        # This way it can be filtered
 
+    def vulnerable_versions_lookup(self, args):
+        # TODO: Refactor this to send an error if a version isn't found,
         debug(f"\nFINDING version for: {self.package},{self.release}")
         try:
             debug("ATTEMTPING to find version with bugid")
@@ -370,6 +378,10 @@ class Cve:
                     debug(f"N-1 failed with:\n\t{error2}")
 
 
+def check_tables_are_valid():
+    print("todo")
+
+
 def get_cve_tables(args: argparse.Namespace):
     url = f"https://security-tracker.debian.org/tracker/CVE-{args.cve_number}"
     fixed_table = None
@@ -398,15 +410,15 @@ def get_cve_tables(args: argparse.Namespace):
                     info_table = elt
                 if header == header_fixed:
                     fixed_table = elt
-
+            
         if info_table is None and fixed_table is None:
             raise CVENotFound(
                 "Decret didn't find any tables on the security tracker site"
-            )
+        )
 
+        #TODO:FINISH HIM
         info_table, fixed_table = clean_tables(info_table, fixed_table)
-        info_table, fixed_table = filter_tables(info_table, fixed_table)
-
+        info_table, fixed_table = filter_tables(info_table, fixed_table, args)
         if info_table is None and fixed_table is None:
             raise CVENotFound(
                 "CVE is either ITP,NOT-FOR-US,REJECTED, or it doesn't affect any debian release"
@@ -444,17 +456,14 @@ def clean_tables(info_table, fixed_table):
     return info_table, fixed_table
 
 
-def filter_tables(info_table, fixed_table):
-    # The idea of filtering separately is to have all available data and
-    # make it easier for implementig other stuff
-    # also for handling args like --release
+def filter_tables(info_table, fixed_table, args):
     fixed_table = [
         line
         for line in fixed_table
         # TODO: Implement support for (unstable)
-        if "(not affected)" not in line and
-        # This line might not be useful
-        any(release in line for release in DEBIAN_RELEASES + ["(unstable)"])
+        if "(not affected)" not in line
+        and (not args.release or args.release in line)
+        and any(release in line for release in DEBIAN_RELEASES + ["(unstable)"])
     ]
 
     info_table = [
@@ -467,9 +476,16 @@ def filter_tables(info_table, fixed_table):
         )
     ]
 
+    if fixed_table == [] and info_table == []:
+        #IMPROVEMENT: Could be adapted to try and build on recent releases nevertheless
+        raise CVENotFound("Decret failed to find possible configurations"
+                          f"{' seems like the specified release was never vulnerable' 
+                          if args.release is not None else ""}"
+        )
+
     return info_table, fixed_table
 
-
+# pylint: disable=too-many-positional-arguments
 def convert_tables(info_table, fixed_table):
     convert_results = []
 
@@ -481,7 +497,7 @@ def convert_tables(info_table, fixed_table):
 
         config = Cve(
             package=line[0],
-            release=line[2],
+            release="sid" if line[2] == "(unstable)" else line[2],
             fixed=line[3],
             advisory=None if line[5] == "" else line[5],
             bugids=None if bug_id is None else [(bug_id, False)],
@@ -520,31 +536,33 @@ def get_snapshots(cve_list, args):
                 cve_list.remove(cve)
 
 
-def collapse_list(cve_list):
+def collapse_list(cve_list, args):
     # For the time being if a bug report has many affected versions we take the first one:
+    #And we filter out unwanted packages
+    collapsed = []
     for cve in cve_list:
-        if len(cve.vulnerable) <= 0:
-            print(cve.to_string())
+        if args.bin_package is not None and args.bin_package not in cve.package:
+            continue
         cve.vulnerable = cve.vulnerable[0]
+        collapsed.append(cve)
+    return collapsed
 
-
-def choose_one(cve_list):
+def choose_one(cve_list,args):
     # The idea here is to choose the most reliable method with the most recent release
     # we use the lexicographical comparison of python tuples for this
     # this goes through all the CVE list,
     # but supposes the vulnerable config is one element instead of a list
 
-    collapse_list(cve_list)
-
+    collapsed_list = collapse_list(cve_list,args)
     best = max(
-        cve_list,
+        collapsed_list,
         key=lambda x: (
             METHOD_PRIORITY[x.vulnerable.method],
             RELEASE_PRIORITY[x.release],
         ),
     )
 
-    return best
+    return (collapsed_list, best)
 
     # TODO: Understand how we deal with the (unfixed) tag now
 
@@ -569,7 +587,7 @@ def main():
     total = len(cves)  # Supposing the list is collapsed
     print(f"Found {total} possible configurations")
 
-    choice = choose_one(cves)
+    collapsed_list ,choice = choose_one(cves, arguments)
 
     # This passes information to write_ build_ and run_ docker
     if not arguments.release:
@@ -600,8 +618,7 @@ def main():
     # Idk Probably
 
     print("Writing Dockerfile")
-    # Rewrite to work with choice
-    write_dockerfile(arguments, cves, source_lines)
+    write_dockerfile(arguments, collapsed_list, source_lines)
     write_cmdline(arguments)
 
     if arguments.only_create_dockerfile:
