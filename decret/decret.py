@@ -443,7 +443,7 @@ def get_snapshot(cve_details: list[dict]):
 
             response = requests.get(url, timeout=DEFAULT_TIMEOUT).json()["result"][-1]
             snapshot_id.append(response["first_seen"])
-        
+
 
     if not snapshot_id:
         raise Exception("Snapshot id not found.")

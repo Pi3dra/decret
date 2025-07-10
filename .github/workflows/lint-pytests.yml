@@ -1,0 +1,41 @@
+name: Python CI (Pylint + Pytest)
+
+on:
+  push:
+    branches: [ main, tentative ]
+  pull_request:
+    branches: [ main, tentative ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'  
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Lint with pylint (fail only on errors)
+      #Prototyping, I don't want the CI to fail on warnings change later
+      run: |
+        pylint decret --output-format=parseable | tee pylint-output.txt
+        if grep -q ":[0-9]\+: \[E" pylint-output.txt; then
+          echo "Pylint errors found"
+          exit 1
+        else
+          echo "No pylint errors found"
+        fi
+
+    - name: Run tests with pytest
+      run: |
+        pytest
+
