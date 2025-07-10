@@ -510,7 +510,6 @@ def write_dockerfile(args: argparse.Namespace, cve_details, source_lines: list[s
 
     # Old reseases should only use the snapshot sources
     clear_sources = args.release not in AVAILABLE_ON_MAIN_SITE
-
     content = template.render(
         clear_sources=clear_sources,
         debian_release=args.release,
