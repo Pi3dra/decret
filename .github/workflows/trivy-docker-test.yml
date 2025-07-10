@@ -1,0 +1,42 @@
+name: Trivy CVE Tests
+
+#This only runs after building and pushing containers to GHCR
+on:
+  workflow_run:
+    workflows: ["Build and Push containers to GHCR"]
+    types:
+      - completed
+
+permissions:
+  contents: read
+
+jobs:
+  trivy-check:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        cve:
+          - cve-2016-3714
+          - cve-2014-0160
+          - cve-2020-7247
+          - cve-2023-22809
+      fail-fast: false
+
+    steps:
+      - name: Run Trivy scan for ${{ matrix.cve }}
+        uses: aquasecurity/trivy-action@master
+        id: trivy
+        with:
+          image-ref: ghcr.io/pi3dra/decret/${{ matrix.cve }}:latest
+          format: json
+          output: trivy-results.json
+
+      - name: Check for ${{ matrix.cve }} in scan results
+        run: |
+          CVE_UPPER=$(echo "${{ matrix.cve }}" | sed 's/^cve/CVE/')
+          if ! grep -q "$CVE_UPPER" trivy-results.json; then
+            echo "${{ matrix.cve }} not found! Failing the job."
+            exit 1
+          else
+            echo "${{ matrix.cve }} found as expected."
+          fi
