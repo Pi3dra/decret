@@ -16,17 +16,32 @@ in order to build and run a vulnerable Docker container to test and
 illustrate security concepts.
 """
 
+from argparse import Namespace
+import sys
+import os
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 import pytest
-from decret import arg_parsing, FatalError
 
 
-def test_args():
-    args = arg_parsing("-n 2020-7247 -r bullseye".split())
-    assert args.cve_number == "2020-7247"
-    assert args.release == "bullseye"
+@pytest.fixture
+def bullseye_args():
+    return Namespace(
+        release="bullseye",
+        fixed_version=None,
+        cache_main_json_file=None,
+        bin_package=None,
+        vulnerable_version=None,
+    )
 
-    with pytest.raises(FatalError):
-        args = arg_parsing("-n NOT_A_CVE_NUMBER -r bullseye".split())
 
-    with pytest.raises(SystemExit):
-        args = arg_parsing("-n 2020-7247 -r NOT_A_RELEASE".split())
+@pytest.fixture
+def wheezy_args():
+    return Namespace(
+        release="wheezy",
+        fixed_version=None,
+        cache_main_json_file=None,
+        bin_package=None,
+        vulnerable_version=None,
+    )

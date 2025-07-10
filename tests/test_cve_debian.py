@@ -16,8 +16,9 @@ in order to build and run a vulnerable Docker container to test and
 illustrate security concepts.
 """
 
+import os
 import pytest
-from decret import (
+from decret.decret import (
     check_program_is_present,
     prepare_browser,
     get_cve_details_from_json,
@@ -74,7 +75,7 @@ def test_get_cve_info_cve_2014_0160(wheezy_args):
 
 def test_get_cve_info_from_cached_json_file(bullseye_args):
     bullseye_args.cve_number = "2020-7247"
-    bullseye_args.cache_main_json_file = "test-material/opensmtpd-json-cached-data"
+    bullseye_args.cache_main_json_file = "tests/test-material/opensmtpd-json-cached-data"
     results = get_cve_details_from_json(bullseye_args)
     assert len(results) == 1
     assert results[0]["src_package"] == "opensmtpd"
