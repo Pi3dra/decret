@@ -1,0 +1,416 @@
+import os
+import re
+import subprocess
+import sys
+import argparse
+import jinja2
+import requests
+import pandas as pd
+from requests.exceptions import RequestException
+from decret.decret import (
+    DEFAULT_TIMEOUT,
+    AVAILABLE_ON_MAIN_SITE,
+    DEBIAN_RELEASES,
+    RUNS_ON_GITHUB_ACTIONS,
+    DOCKER_SHARED_DIR,
+    FatalError,
+    Path,
+)
+
+# ====================== Requirements =========================
+
+
+def check_program_is_present(progname, cmdline):
+    try:
+        subprocess.run(cmdline, check=True, shell=False, capture_output=True)
+    except subprocess.CalledProcessError as exc:
+        raise FatalError(
+            f"{progname} does not seem to be installed. {cmdline} did not return 0."
+        ) from exc
+
+
+def check_requirements():
+    check_program_is_present("Docker", ["docker", "-v"])
+
+
+# ====================== Exploits =========================
+def db_is_up_to_date():
+    """
+    Returns a tuple ( bool * string) indicating if the db needs updating and the new hash
+    """
+    project_id = "40927511"
+    file_path = "files_exploits.csv"
+    destination_dir = "cached-files"
+    hash_file_path = os.path.join(destination_dir, "files_exploits.hash")
+    url = (
+        f"https://gitlab.com/api/v4/projects/{project_id}"
+        f"/repository/files/{file_path}/raw?ref=main"
+    )
+
+    head = requests.head(url, timeout=DEFAULT_TIMEOUT)
+    head.raise_for_status()
+    blob_hash = head.headers["x-gitlab-blob-id"]
+
+    stored_blob_hash = None
+
+    try:
+        with open(hash_file_path, "r", encoding="utf-8") as file:
+            stored_blob_hash = file.read()
+    except FileNotFoundError:
+        return (False, blob_hash)
+
+    return (stored_blob_hash == blob_hash, blob_hash)
+
+
+def download_db():
+    # DOCS: https://docs.gitlab.com/api/repository_files/#get-file-metadata-only
+    project_id = "40927511"  # Project ID for exploit-db
+    file_path = "files_exploits.csv"
+    destination_dir = "cached-files"
+    hash_file_path = os.path.join(destination_dir, "files_exploits.hash")
+    csv_file_path = os.path.join(destination_dir, file_path)
+    url = (
+        f"https://gitlab.com/api/v4/projects/{project_id}"
+        f"/repository/files/{file_path}/raw?ref=main"
+    )
+
+    print("Cheking if the cache from exploit-db is up to date")
+
+    try:
+        up_to_date, blob_hash = db_is_up_to_date()
+    except RequestException as error:
+        print(f"Checking if the cache is up to date failed with {error}")
+        return
+
+    if not up_to_date:
+        print("Proceeding to download files_exploits.csv from exploit-db")
+    else:
+        print("cache is up to date no need to download it")
+        return
+
+    try:
+        response = requests.get(url, timeout=DEFAULT_TIMEOUT)
+        response.raise_for_status()
+    except RequestException as error:
+        print(f"Failed GET request from {url} with :\n{error}")
+        return
+
+    os.makedirs(destination_dir, exist_ok=True)
+
+    try:
+        with open(csv_file_path, "wb") as file:
+            file.write(response.content)
+        with open(hash_file_path, "w", encoding="utf-8") as file:
+            file.write(blob_hash)
+        print("File downloaded and hash updated.")
+    except IOError as error:
+        print(f"Failed to write file: {error}")
+
+
+def get_exploits(args):
+    print("\nSearching for exploits on https://www.exploit-db.com/")
+    print("The cached file is in: cached-files/files_exploits.csv")
+
+    try:
+        data = pd.read_csv("cached-files/files_exploits.csv")
+    except FileNotFoundError:
+        download_db()
+        try:
+            data = pd.read_csv("cached-files/files_exploits.csv")
+        except FileNotFoundError:
+            print("Failed to download db")
+            return
+
+    data = data[["id", "file", "verified", "codes", "tags", "aliases"]]
+
+    cve_id = f"CVE-{args.cve_number}"
+    data = data[
+        data["codes"].str.contains(cve_id, na=False)
+        | data["tags"].str.contains(cve_id, na=False)
+        | data["aliases"].str.contains(cve_id, na=False)
+    ]
+    data = list(zip(data["id"], data["file"], data["verified"]))
+
+    output_dir = Path(args.directory)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    if len(data) == 0:
+        print("No exploits Found")
+        return
+
+    print(f"Found {len(data)} exploits:\n")
+
+    for i, (exploit_id, path, verified) in enumerate(data):
+        # Building url
+        project_id = "40927511"
+        url = (
+            f"https://gitlab.com/api/v4/projects/{project_id}"
+            f"/repository/files/{path.replace('/', '%2F')}/raw?ref=main"
+        )
+
+        # Show sources
+        print(f"https://www.exploit-db.com/exploits/{exploit_id}")
+
+        # Building path
+        file_extension = os.path.splitext(path)[1]
+        exploit_filename = f"exploit_{i}_{exploit_id}"
+        if verified:
+            exploit_filename += "_verified"
+        exploit_path = output_dir / Path(exploit_filename + file_extension)
+
+        # Fetching exploits
+        response = requests.get(url, timeout=DEFAULT_TIMEOUT)
+        if response.status_code == 200:
+            os.makedirs("cached-files", exist_ok=True)
+            with open(exploit_path, "wb") as file:
+                file.write(response.content)
+        else:
+            print(f"Failed to download file: {response.status_code} - {response.text}")
+
+
+# ====================== Arguments and Init =========================
+
+
+def init_decret():  # pragma: no cover
+    args = arg_parsing()
+    check_requirements()
+    init_shared_directory(args)
+
+    return args
+
+
+def arg_parsing(args=None):
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-n",
+        "--number",
+        dest="cve_number",
+        type=str,
+        help="A CVE number to search (e.g.: 2022-38392)",
+        required=True,
+    )
+    parser.add_argument(
+        "-r",
+        "--release",
+        dest="release",
+        type=str,
+        choices=DEBIAN_RELEASES,
+        help="Debian Release name from 2005 to 2025",
+    )
+    parser.add_argument(
+        "-d",
+        "--directory",
+        dest="dirname",
+        type=str,
+        help="Directory path for the CVE experiment",
+        default="./default",
+    )
+    parser.add_argument(
+        "--vulnerable-version",
+        dest="vulnerable_version",
+        type=str,
+        help="Specify the vulnerable version number of the package",
+    )
+    parser.add_argument(
+        "--bin_package",
+        dest="bin_package",
+        type=str,
+        help="Name of the binary package targeted.",
+    )
+    parser.add_argument(
+        "-p",
+        "--package",
+        dest="package",
+        type=str,
+        help="Name of the package targeted.",
+    )
+    parser.add_argument(
+        "--port",
+        dest="port",
+        type=int,
+        help="Port forwarding between the Docker and the host",
+    )
+    parser.add_argument(
+        "--host-port",
+        dest="host_port",
+        type=int,
+        help="Set the host port in case of port forwarding (default is the --port value)",
+    )
+    parser.add_argument(
+        "-s",
+        "--selenium",
+        dest="selenium",
+        action="store_true",
+        help="Activate the use of selenium (mandatory to download the exploit)",
+    )
+    parser.add_argument(
+        "--do-not-use-sudo",
+        dest="do_not_use_sudo",
+        action="store_true",
+        help="Do not use sudo to run docker commands",
+    )
+    parser.add_argument(
+        "--only-create-dockerfile",
+        dest="only_create_dockerfile",
+        action="store_true",
+        help="Do not build nor run the created docker",
+    )
+    parser.add_argument(
+        "--dont-run",
+        dest="dont_run",
+        action="store_true",
+        help="Do not build nor run the created docker",
+    )
+    parser.add_argument(
+        "--cache-main-json-file",
+        dest="cache_main_json_file",
+        type=str,
+        help="Path to load/save https://security-tracker.debian.org/tracker/data/json",
+    )
+    parser.add_argument(
+        "--run-lines",
+        dest="run_lines",
+        nargs="*",
+        help="Add RUN lines to execute commands to finalize the environment",
+    )
+    parser.add_argument(
+        "--cmd-line",
+        dest="cmd_line",
+        type=str,
+        help="Change the CMD line to specify the command to run by default in the container",
+    )
+
+    namespace = parser.parse_args(args)
+
+    if re.match(r"^CVE-2\d{3}-(0\d{3}|[1-9]\d{3,})$", namespace.cve_number):
+        namespace.cve_number = namespace.cve_number[4:]
+    elif not re.match(r"^2\d{3}-(0\d{3}|[1-9]\d{3,})$", namespace.cve_number):
+        parser.print_usage(sys.stderr)
+        raise FatalError("Wrong CVE format.")
+
+    return namespace
+
+
+# ====================== Docker =========================
+
+
+def init_shared_directory(args):
+    args.directory = Path(args.dirname)
+    try:
+        args.directory.mkdir(parents=True, exist_ok=True)
+    except PermissionError as exc:
+        raise FatalError(f"Error while creating {args.dirname}") from exc
+
+
+def write_cmdline(args: argparse.Namespace):
+    cmdline_path = args.directory / "cmdline"
+    with cmdline_path.open("w", encoding="utf-8") as cmdline_file:
+        args_to_write = []
+        for arg in sys.argv:
+            if " " in arg:
+                arg = arg.replace(r"\\", r"\\")
+                arg = arg.replace(r'"', r"\"")
+                arg = f'"{arg}"'
+            args_to_write.append(arg)
+        cmdline_file.write(" ".join(args_to_write))
+        cmdline_file.write("\n")
+
+
+def prepare_sources(snapshot_id: str, vuln_fixed: bool):
+    options = (
+        "[check-valid-until=no allow-insecure=yes allow-downgrade-to-insecure=yes]"
+    )
+    url = f"http://snapshot.debian.org/archive/debian/{snapshot_id}/"
+    if vuln_fixed:
+        release = ["testing", "stable", "unstable"]
+        return [f"deb {options} {url} {rel} main" for rel in release]
+        # If vuln is unfixed we don't write to
+        # sources.list.d/snapshot.list
+        # We just take the latest relase we find
+    return []
+
+
+# pylint: disable=too-many-locals
+def write_dockerfile(args: argparse.Namespace, cve_list, source_lines: list[str]):
+    target_dockerfile = args.directory / "Dockerfile"
+    decret_rootpath = Path(__file__).resolve().parent
+    src_template = decret_rootpath / "Dockerfile.template"
+    template_content = src_template.read_text()
+    template = jinja2.Environment().from_string(template_content)
+
+    # This should cover up to jessie
+    if args.release in DEBIAN_RELEASES[:7]:
+        apt_flag = "--force-yes"
+    else:
+        apt_flag = "--allow-unauthenticated --allow-downgrades"
+
+    default_packages = " ".join(["aptitude", "nano", "adduser"])
+
+    binary_packages = []
+    for cve in cve_list:
+        if cve.release == args.release:
+            for bin_name in cve.vulnerable.bin_names:
+                bin_name_and_version = [bin_name + f"={cve.vulnerable.version}"]
+                binary_packages.extend(bin_name_and_version)
+
+    # Old reseases should only use the snapshot sources
+    content = template.render(
+        clear_sources=args.release not in AVAILABLE_ON_MAIN_SITE,
+        debian_release=args.release,
+        source_lines=source_lines,
+        apt_flag=apt_flag,
+        default_packages=default_packages,
+        package_name=" ".join(binary_packages),
+        run_lines=args.run_lines,
+        cmd_line=args.cmd_line,
+        copy_exploits=RUNS_ON_GITHUB_ACTIONS,
+    )
+    target_dockerfile.write_text(content)
+
+
+def build_docker(args):
+    print("Building the Docker image.")
+    # This is needed as we don't know in advance which release it will choose on its own
+    prepend = "" if RUNS_ON_GITHUB_ACTIONS else f"{args.release}/"
+    docker_image_name = f"{prepend}cve-{args.cve_number}"
+
+    if args.do_not_use_sudo:
+        build_cmd = []
+    else:
+        build_cmd = ["sudo"]
+
+    build_cmd.extend(["PROGRESS_NO_TRUNC=1"])
+    build_cmd.extend(["docker", "build"])
+    build_cmd.extend(["--progress", "plain", "--no-cache"])
+    build_cmd.extend(["-t", docker_image_name])
+    build_cmd.append(args.dirname)
+
+    try:
+        subprocess.run(build_cmd, check=True)
+    except subprocess.CalledProcessError as exc:
+        raise FatalError("Error while building the container") from exc
+
+
+def run_docker(args):
+    docker_image_name = f"{args.release}/cve-{args.cve_number}"
+    print(f"Running the Docker. The shared directory is '{DOCKER_SHARED_DIR}'.")
+
+    if args.do_not_use_sudo:
+        run_cmd = []
+    else:
+        run_cmd = ["sudo"]
+    run_cmd.extend(["docker", "run", "--privileged", "-it", "--rm"])
+    run_cmd.extend(["-v", f"{args.directory.absolute()}:{DOCKER_SHARED_DIR}"])
+    run_cmd.extend(["-h", f"cve-{args.cve_number}"])
+    run_cmd.extend(["--name", f"cve-{args.cve_number}"])
+    if args.port:
+        if args.host_port:
+            run_cmd.extend(["-p" f"{args.host_port}:{args.port}"])
+        else:
+            run_cmd.extend(["-p" f"{args.port}:{args.port}"])
+    run_cmd.append(docker_image_name)
+
+    try:
+        subprocess.run(run_cmd, check=True)
+    except subprocess.CalledProcessError as exc:
+        raise FatalError("Error while running the container") from exc
