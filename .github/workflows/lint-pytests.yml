@@ -2,9 +2,9 @@ name: Python CI (Pylint + Pytest)
 
 on:
   push:
-    branches: [ main, tentative ]
-  pull_request:
-    branches: [ main, tentative ]
+    paths:
+      - decret/decret.py
+
 
 jobs:
   build:
@@ -25,17 +25,8 @@ jobs:
         pip install -r requirements.txt
 
     - name: Lint with pylint (fail only on errors)
-      #Prototyping, I don't want the CI to fail on warnings change later
-      run: |
-        pylint decret --output-format=parseable | tee pylint-output.txt
-        if grep -q ":[0-9]\+: \[E" pylint-output.txt; then
-          echo "Pylint errors found"
-          exit 1
-        else
-          echo "No pylint errors found"
-        fi
+      run: pylint --disable broad-exception-raised decret 
 
     - name: Run tests with pytest
-      run: |
-        pytest
+      run: pytest
 
