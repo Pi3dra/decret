@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import re
 import subprocess
 import sys
@@ -9,14 +10,13 @@ import requests
 # Pandas doesn't have type hints for mypy
 import pandas as pd  # type: ignore
 from requests.exceptions import RequestException
-from decret.decret import (
+from decret.config import (
     DEFAULT_TIMEOUT,
     AVAILABLE_ON_MAIN_SITE,
     DEBIAN_RELEASES,
     RUNS_ON_GITHUB_ACTIONS,
     DOCKER_SHARED_DIR,
     FatalError,
-    Path,
 )
 
 # ====================== Requirements =========================
