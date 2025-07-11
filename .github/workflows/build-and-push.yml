@@ -4,8 +4,6 @@ name: Build and Push containers to GHCR
 on:
   push:
     branches:
-      - main
-      - tentative
     paths:
       - decret/decret.py
       - decret/Dockerfile.template
