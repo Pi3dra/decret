@@ -1,17 +1,17 @@
+import sys
 import argparse
 import re
 from typing import Optional
+import requests
 from bs4 import BeautifulSoup, Tag
 from requests.exceptions import RequestException
-from decret.decret import (
-    requests,
+from decret.config import (
     DEFAULT_TIMEOUT,
     DEBIAN_RELEASES,
     LATEST_RELEASE,
     RUNS_ON_GITHUB_ACTIONS,
     FatalError,
     CVENotFound,
-    sys,
 )
 
 from decret.utils import (
