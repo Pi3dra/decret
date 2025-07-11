@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import re
 import subprocess
 import sys
@@ -7,14 +8,13 @@ import jinja2
 import requests
 import pandas as pd
 from requests.exceptions import RequestException
-from decret.decret import (
+from decret.config import (
     DEFAULT_TIMEOUT,
     AVAILABLE_ON_MAIN_SITE,
     DEBIAN_RELEASES,
     RUNS_ON_GITHUB_ACTIONS,
     DOCKER_SHARED_DIR,
     FatalError,
-    Path,
 )
 
 # ====================== Requirements =========================
