@@ -16,7 +16,6 @@ jobs:
     strategy:
       matrix:
         cve:
-          - cve-2016-3714
           - cve-2014-0160
           - cve-2020-7247
           - cve-2023-22809
@@ -24,7 +23,7 @@ jobs:
 
     steps:
       - name: Prepare variables
-        #The username has to be lowercase for GHCR to accept it 
+        # The username has to be lowercase for GHCR to accept it 
         id: vars
         run: |
           OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')

@@ -6,6 +6,7 @@ on:
     #Add feature branches here
     branches:
       - main
+      - prototype
     paths:
       - decret/decret.py
       - decret/Dockerfile.template
@@ -23,17 +24,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - distro: jessie
-            cve: cve-2016-3714
+          - cve: cve-2016-3714
             options: "--directory imagetragick"
-          - distro: bullseye
-            cve: cve-2014-0160
+          - cve: cve-2014-0160
             options: "--directory heartbleed"
-          - distro: bullseye
-            cve: cve-2020-7247
+          - cve: cve-2020-7247
             options: "--directory opensmtpd"
-          - distro: bullseye
-            cve: cve-2023-22809
+          - cve: cve-2023-22809
             options: "--directory sudoedit"
 
     permissions:
@@ -74,12 +71,12 @@ jobs:
           CVE_NAME="${{ matrix.cve }}"
           STRIPPED_CVE="${CVE_NAME#cve-}"
           #Build, tag and push in order
-          python3 -m decret -r "${{ matrix.distro }}" -n "$STRIPPED_CVE" ${{ matrix.options }} -s
+          python3 -m decret -n "$STRIPPED_CVE" ${{ matrix.options }} 
 
       - name: Tag and Push Docker Images
         run : | 
           #The username has to be lowercase for GHCR to accept it 
           OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          docker tag "${{ matrix.distro }}/${{matrix.cve}}" "ghcr.io/$OWNER_LOWER/decret/${{matrix.cve}}:latest"
+          docker tag "${{matrix.cve}}" "ghcr.io/$OWNER_LOWER/decret/${{matrix.cve}}:latest"
           docker push "ghcr.io/$OWNER_LOWER/decret/${{matrix.cve}}:latest"
 
