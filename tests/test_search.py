@@ -1,5 +1,5 @@
 import pytest
-from decret.proto import *
+from decret.decret import *
 import re
 
 # ===================== Global Fixtures =====================
@@ -7,7 +7,7 @@ import re
 
 @pytest.fixture(scope="session")
 def cve_numbers():
-    file_path = "tests/test-material/test.txt"
+    file_path = "tests/test-material/cves.txt"
     try:
         with open(file_path, "r") as file:
             return [line.strip() for line in file if line.strip()]
