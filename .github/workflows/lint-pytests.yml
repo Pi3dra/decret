@@ -31,7 +31,7 @@ jobs:
       run: mypy decret/
 
     - name: Lint with pylint 
-      run: pylint decret/proto.py decret/utils.py
+      run: pylint decret/
 
     - name: Run tests with pytest
       run: pytest
