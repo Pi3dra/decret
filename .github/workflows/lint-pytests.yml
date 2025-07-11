@@ -24,9 +24,8 @@ jobs:
         pip install -r requirements.txt
 
     - name: Lint with pylint (fail only on errors)
-      #Prototyping, I don't want the CI to fail on similar code to decret.py
       run: |
-        pylint decret/proto.py decret/utils.py
+        pylint decret
 
     - name: Run tests with pytest
       run: |
