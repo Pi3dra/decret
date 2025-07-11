@@ -4,9 +4,8 @@ name: Build and Push containers to GHCR (PROTO)
 on:
   push:
     branches:
-      - main  
     paths:
-      - decret/decret.py
+      - decret/proto.py
       - decret/Dockerfile.template
       - .github/workflows/build-and-push-proto.yml
 
@@ -14,16 +13,10 @@ jobs:
   build-and-push:
     runs-on: ubuntu-latest
     
-
-    #This separates all containers to different jobs
-    #To better see errors, and to build containers even
-    #if one fails
     strategy:
       fail-fast: false
       matrix:
         include:
-        #I don't know if the directory flag is really needed here 
-        #but just to be safe and prevent potential overwriting by the parallel matrix
           - cve: cve-2016-3714
             options: "--directory imagetragick" 
           - cve: cve-2014-0160

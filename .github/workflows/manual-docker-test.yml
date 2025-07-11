@@ -2,12 +2,6 @@ name: Manual CVE Tests
 
 #This only runs after building and pushing dockers to ghcr
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - .github/workflows/manual-docker-test.yml
-
   workflow_run:
     workflows: ["Build and Push containers to GHCR"]
     types:
@@ -16,6 +10,7 @@ on:
 jobs:
 
   build:
+    if: False #Disabling this job for the time being
 
     runs-on: ubuntu-latest
 

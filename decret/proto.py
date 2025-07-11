@@ -292,8 +292,6 @@ class Cve:
                     versions = self._extract_versions(content, bugid)
                     self._handle_versions(versions, check)
 
-                # TODO: if this generates many versions it should add new cves
-                # instead of appending vuln_configs
                 except RequestException as error:
                     raise SearchError(
                         f"requests: Error accesing bug report: {error}"
@@ -412,10 +410,13 @@ def get_cve_tables(args: argparse.Namespace):
         info_table, fixed_table = filter_tables(info_table, fixed_table, args)
 
         if info_table == [] and fixed_table == []:
+            if args.release is not None:
+                message = ", seems like the specified release was never vulnerable"
+            else:
+                message = ""
             raise CVENotFound(
                 "CVE is probably ITP this is not replicable"
-                f"{', seems like the specified release was never vulnerable'
-                if args.release is not None else ""}"
+                f"{message}"
                 ", or the specified filtering is incorrect"
             )
 
@@ -557,8 +558,6 @@ def choose_one(cve_list, args):
 def main():
     # Run nteractively
     arguments = init_decret()
-    # TODO: Add more reobust error handling
-
     print(
         "\nGetting information from:\n",
         f"https://security-tracker.debian.org/tracker/CVE-{arguments.cve_number}\n",
@@ -587,7 +586,7 @@ def main():
         arguments.release = choice.release
 
     vuln_unfixed = choice.vulnerable.version == "(unfixed)"
-    #The second arg helps chosing wether or not using snapshot
+    # The second arg helps chosing wether or not using snapshot
     source_lines = prepare_sources(
         choice.vulnerable.timestamp, not vuln_unfixed or arguments.release == "sid"
     )
