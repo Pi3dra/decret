@@ -240,13 +240,6 @@ def arg_parsing(args=None):
         help="Set the host port in case of port forwarding (default is the --port value)",
     )
     parser.add_argument(
-        "-s",
-        "--selenium",
-        dest="selenium",
-        action="store_true",
-        help="Activate the use of selenium (mandatory to download the exploit)",
-    )
-    parser.add_argument(
         "--do-not-use-sudo",
         dest="do_not_use_sudo",
         action="store_true",
@@ -259,16 +252,16 @@ def arg_parsing(args=None):
         help="Do not build nor run the created docker",
     )
     parser.add_argument(
+        "--copy-exploits",
+        dest="copy_exploits",
+        action="store_true",
+        help="Copy exploits instead of using shared dir",
+    )
+    parser.add_argument(
         "--dont-run",
         dest="dont_run",
         action="store_true",
         help="Do not build nor run the created docker",
-    )
-    parser.add_argument(
-        "--cache-main-json-file",
-        dest="cache_main_json_file",
-        type=str,
-        help="Path to load/save https://security-tracker.debian.org/tracker/data/json",
     )
     parser.add_argument(
         "--run-lines",
@@ -366,7 +359,7 @@ def write_dockerfile(args: argparse.Namespace, cve_list, source_lines: list[str]
         package_name=" ".join(binary_packages),
         run_lines=args.run_lines,
         cmd_line=args.cmd_line,
-        copy_exploits=RUNS_ON_GITHUB_ACTIONS,
+        copy_exploits=RUNS_ON_GITHUB_ACTIONS or args.copy_exploits,
     )
     target_dockerfile.write_text(content)
 
