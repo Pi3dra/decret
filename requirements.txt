@@ -75,5 +75,3 @@ webencodings==0.5.1
 websocket-client==1.8.0
 wrapt==1.17.2
 wsproto==1.2.0
-beautifulsoup4==4.12.2 
-pandas == 2.3.0
