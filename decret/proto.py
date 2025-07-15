@@ -50,6 +50,12 @@ def get_json(url):
 
 
 class VulnerableConfig:
+    """
+    This class holds all the necessary information to build a vulnerable container,
+    It is used inside the CVE class to also know from which table entry it comes from,
+    and the concerned Debian release.
+    """
+
     def __init__(self, version, method):
         self.version = version
         self.timestamp = None
@@ -126,6 +132,14 @@ class VulnerableConfig:
 
 
 class Cve:
+    """
+    This class represents, for a single CVE,
+    a single table entry from one of the two mid tables
+    of this site (example on Heartbleed):
+        https://security-tracker.debian.org/tracker/CVE-2014-0160
+    The information is then aggregated and filtered to a list of Cve objects.
+    """
+
     # pylint: disable=too-many-arguments
     # pylint: disable=too-many-positional-arguments
     def __init__(
@@ -243,11 +257,13 @@ class Cve:
     def _handle_versions(self, versions, dsa):
         # We treat cases where one bug report concerns many versions
         for version in versions:
-            # In some bug reports the packagename is prepended/ to the version
-            # We also backported versions
+            # We ignore backported versions
             if "bpo" in version:
                 continue
 
+            # In some bug reports the "Found in version:"
+            # information is formatted like so: packagename/version
+            # we remove packagename/
             slash_pos = version.find("/")
             if slash_pos != -1:
                 clean_version = version[slash_pos + 1 :]
