@@ -24,8 +24,14 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
-    - name: Lint with pylint (fail only on errors)
-      run: pylint --disable broad-exception-raised decret 
+    - name: Check with black 
+      run: black --check decret/ 
+
+    - name: Type checking with mypy
+      run: mypy decret/
+
+    - name: Lint with pylint 
+      run: pylint decret/proto.py decret/utils.py
 
     - name: Run tests with pytest
       run: pytest

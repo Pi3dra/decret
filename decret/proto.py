@@ -1,5 +1,6 @@
 import argparse
 import re
+from typing import Optional
 from bs4 import BeautifulSoup, Tag
 from requests.exceptions import RequestException
 from decret.decret import (
@@ -388,8 +389,8 @@ def check_tables_are_valid():
 
 def get_cve_tables(args: argparse.Namespace):
     url = f"https://security-tracker.debian.org/tracker/CVE-{args.cve_number}"
-    fixed_table = []
-    info_table = []
+    fixed_table: Optional[Tag] = None
+    info_table: Optional[Tag] = None
 
     try:
         response = requests.get(url, timeout=DEFAULT_TIMEOUT)

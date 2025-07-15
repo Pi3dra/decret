@@ -5,7 +5,9 @@ import sys
 import argparse
 import jinja2
 import requests
-import pandas as pd
+
+# Pandas doesn't have type hints for mypy
+import pandas as pd  # type: ignore
 from requests.exceptions import RequestException
 from decret.decret import (
     DEFAULT_TIMEOUT,
@@ -36,7 +38,8 @@ def check_requirements():
 # ====================== Exploits =========================
 def db_is_up_to_date():
     """
-    Returns a tuple ( bool * string) indicating if the db needs updating and the new hash
+    Returns a tuple ( bool * string),
+    indicating if the db needs updating and the new hash if so
     """
     project_id = "40927511"
     file_path = "files_exploits.csv"
