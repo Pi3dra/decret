@@ -41,6 +41,8 @@ from decret.utils import (
     write_dockerfile,
     build_docker,
     run_docker,
+    version_distance,
+    version_tuple,
 )
 
 METHOD_PRIORITY = {"Vulnerable": 4, "Bug": 3, "DSA": 2, "N-1": 1}
@@ -84,9 +86,11 @@ class VulnerableConfig:
 
     def to_string(self):
         return (
-            f"  version: {self.version}\n "
-            f"   timestamp: {self.timestamp}\n "
-            f"   method: {self.method}"
+            f"version: {self.version}\n   "
+            f"timestamp: {self.timestamp}\n   "
+            f"pkg_hash: {self.pkg_hash}\n   "
+            f"bin_names: {self.bin_names}\n   "
+            f"method: {self.method}  "
         )
 
     def get_bin_names(self, package):
@@ -125,7 +129,7 @@ class VulnerableConfig:
                 self.get_bin_names(package)
             except Exception as error2:
                 raise SearchError(
-                    f"Couldn't find the source files for the linux package {package} with {error},."
+                    f"Couldn't find the source files for the linux package {package} with {error}."
                 ) from error2
 
             if package == "linux":
@@ -276,16 +280,12 @@ class Cve:
     def _handle_versions(self, versions, dsa):
         # We treat cases where one bug report concerns many versions
         for version in versions:
-            # We ignore backported versions
-            if "bpo" in version:
-                continue
-
-            # In some bug reports the "Found in version:"
-            # information is formatted like so: packagename/version
-            # we remove packagename/
-            slash_pos = version.find("/")
-            if slash_pos != -1:
-                clean_version = version[slash_pos + 1 :]
+            # We attempt to use the version without the backport
+            # Works for CVE-2020-7247, should be tested further
+            # We also remove the prepended packagename/
+            match = re.search(r"(?:.*/)?([^\~]+?)(?:~bpo.*)?$", version)
+            if match is not None:
+                clean_version = match.group(1)
             else:
                 clean_version = version
 
@@ -399,6 +399,38 @@ class Cve:
                         self.preceding_version_lookup()
                     except (SearchError, CVENotFound) as error3:
                         debug(f"N-1 failed with:\n\t{error3}")
+
+    def choose_one(self):
+        """
+        Chooses the vulnerable config version that is closest to the fixed version,
+        this collapses the vulnerable config list into a single element
+        """
+        bug_configs = []
+        dsa_configs = []
+        assert self.vulnerable is not None
+
+        for vuln_config in self.vulnerable:
+            if vuln_config.method == "Bug":
+                bug_configs.append(vuln_config)
+            if vuln_config.method == "DSA":
+                dsa_configs.append(vuln_config)
+
+        fixed_tuple = version_tuple(self.fixed)
+        closest_to_fixed_bug = sorted(
+            bug_configs,
+            key=lambda cve: version_distance(version_tuple(cve.version), fixed_tuple),
+        )
+        closest_to_fixed_dsa = sorted(
+            bug_configs,
+            key=lambda cve: version_distance(version_tuple(cve.version), fixed_tuple),
+        )
+
+        if closest_to_fixed_bug != []:
+            self.vulnerable = [closest_to_fixed_bug[0]]
+        elif closest_to_fixed_dsa != []:
+            self.vulnerable = [closest_to_fixed_dsa[0]]
+        else:
+            self.vulnerable = [self.vulnerable[0]]
 
 
 def get_cve_tables(args: argparse.Namespace):
@@ -553,7 +585,7 @@ def get_snapshots(cve_list, args):
                 config.get_snapshot()
             except SearchError as error:
                 debug(f"failed to get snapshot with: {error}")
-                cve_list.remove(cve)
+                cve.vulnerable.remove(config)
 
 
 def collapse_list(cve_list, args):
@@ -563,27 +595,67 @@ def collapse_list(cve_list, args):
     for cve in cve_list:
         if args.bin_package is not None and args.bin_package not in cve.package:
             continue
-        cve.vulnerable = cve.vulnerable[0]
+        cve.choose_one()
         collapsed.append(cve)
     return collapsed
 
 
-def choose_one(cve_list, args):
+def choose_one(collapsed_list):
     # The idea here is to choose the most reliable method with the most recent release
     # we use the lexicographical comparison of python tuples for this
     # this goes through all the CVE list,
     # but supposes the vulnerable config is one element instead of a list
 
-    collapsed_list = collapse_list(cve_list, args)
     best = max(
         collapsed_list,
         key=lambda x: (
-            METHOD_PRIORITY[x.vulnerable.method],
+            METHOD_PRIORITY[x.vulnerable[0].method],
             RELEASE_PRIORITY[x.release],
         ),
     )
 
-    return (collapsed_list, best)
+    return best
+
+
+def display_options(cve_list):
+    # Might be cleaner if we clump by packages?
+    for i, cve in enumerate(cve_list, start=1):
+        if len(cve.vulnerable) > 1:
+            print(f"{i} Release: {cve.release}, Package:{cve.package}")
+            for x, vuln_config in enumerate(cve.vulnerable, start=1):
+                print(f"  {x}: Version: {vuln_config.version}")
+        else:
+            print(
+                f"{i} Release: {cve.release}",
+                f"Package:{cve.package}",
+                f"Version: {cve.vulnerable[0].version}",
+            )
+
+
+def choose_manually(cve_list):
+    choice = input("Choose a configuration (e.g. 2 or 1.2): ")
+    parts = choice.split(".")
+
+    try:
+        if len(parts) == 1:
+            if int(parts[0]) < 1:
+                raise ValueError("Index must be >= 1")
+            return cve_list[int(parts[0]) - 1]
+
+        if len(parts) == 2:
+            if int(parts[0]) < 1 or int(parts[1]) < 1:
+                raise ValueError("Both indices must be >= 1")
+            chosen_cve = cve_list[int(parts[0]) - 1]
+            if len(chosen_cve.vulnerable) == 1:
+                raise ValueError("The chosen CVE doesn't have multiple choices")
+            chosen_config = chosen_cve.vulnerable[int(parts[1]) - 1]
+            chosen_cve.vulnerable = chosen_config
+            return chosen_cve
+        # If parts is not length 1 or 2, treat as invalid input
+        raise ValueError("Invalid input format")
+
+    except (IndexError, ValueError):
+        return choose_manually(cve_list)
 
 
 def main():
@@ -606,21 +678,29 @@ def main():
     versions_lookup(cves, arguments)
     get_snapshots(cves, arguments)
 
-    total = len(cves)  # Supposing the list is collapsed
-    print(f"Found {total} possible configurations")
+    #for cve in cves:
+    #    print(cve.to_string())
 
-    collapsed_list, choice = choose_one(cves, arguments)
+    if arguments.choose:
+        display_options(cves)
+        choice = choose_manually(cves)
+        collapsed_list = collapse_list(cves, arguments)
+    else:
+        collapsed_list = collapse_list(cves, arguments)
+        total = len(collapsed_list)
+        print(f"Found {total} possible configurations")
+        choice = choose_one(collapsed_list)
 
-    # This passes information to write_ build_ and run_ docker
-    # I wouldn't call this good practice
     if not arguments.release:
         arguments.release = choice.release
 
-    vuln_unfixed = choice.vulnerable.version == "(unfixed)"
+    vuln_unfixed = choice.vulnerable[0].version == "(unfixed)"
+
     # The second arg helps chosing wether or not using snapshot
     source_lines = prepare_sources(
-        choice.vulnerable.timestamp, not vuln_unfixed or arguments.release == "sid"
+        choice.vulnerable[0].timestamp, not vuln_unfixed or arguments.release == "sid"
     )
+
     if vuln_unfixed:
         print(f"\n\nVulnerability unfixed. Using a {LATEST_RELEASE} container.\n\n")
         arguments.release = LATEST_RELEASE
@@ -629,8 +709,8 @@ def main():
         "My best guess is:\n",
         f"Release {arguments.release}\n",
         f"Package {choice.package}\n",
-        f"Version {choice.vulnerable.version}\n",
-        f"Method {choice.vulnerable.method}\n",
+        f"Version {choice.vulnerable[0].version}\n",
+        f"Method {choice.vulnerable[0].method}\n",
     )
 
     download_db()

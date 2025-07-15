@@ -171,6 +171,42 @@ def get_exploits(args):
             print(f"Failed to download file: {response.status_code} - {response.text}")
 
 
+# ====================== Version comparison =========================
+
+
+def version_tuple(version_str):
+    # Information on version convention:
+    #   https://www.debian.org/doc/debian-policy/ch-controlfields.html#special-version-conventions
+    # Removing epoch and revision
+    # Could be a bit more robust if using epoch and revision
+    if ":" in version_str:
+        _, version_str = version_str.split(":", 1)
+
+    parts = re.findall(r"\d+", version_str)
+    result = tuple(int(number) for number in parts)
+    return result
+
+
+def version_distance(v1, v2):
+    biggest_length = max(len(v1), len(v2))
+    # Making tuples the same size
+    v1 += (0,) * (biggest_length - len(v1))
+    v2 += (0,) * (biggest_length - len(v2))
+
+    paired_parts = enumerate(zip(v1, v2))
+
+    # We sum the parts and add weight to different parts
+    # So a bump from 1.2.0 to 1.2.15
+    # is less important than a bump from
+    # 1.2.0 to 1.3.0
+    parts_distance = (
+        abs(part1 - part2) * (100 ** (biggest_length - i - 1))
+        for i, (part1, part2) in paired_parts
+    )
+
+    return sum(parts_distance)
+
+
 # ====================== Arguments and Init =========================
 
 
@@ -219,6 +255,13 @@ def arg_parsing(args=None):
         dest="bin_package",
         type=str,
         help="Name of the binary package targeted.",
+    )
+    parser.add_argument(
+        "-c",
+        "--choose",
+        dest="choose",
+        action="store_true",
+        help="Manually choose a vulnerable configuration",
     )
     parser.add_argument(
         "-p",
@@ -345,8 +388,8 @@ def write_dockerfile(args: argparse.Namespace, cve_list, source_lines: list[str]
     binary_packages = []
     for cve in cve_list:
         if cve.release == args.release:
-            for bin_name in cve.vulnerable.bin_names:
-                bin_name_and_version = [bin_name + f"={cve.vulnerable.version}"]
+            for bin_name in cve.vulnerable[0].bin_names:
+                bin_name_and_version = [bin_name + f"={cve.vulnerable[0].version}"]
                 binary_packages.extend(bin_name_and_version)
 
     # Old reseases should only use the snapshot sources
