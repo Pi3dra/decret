@@ -23,11 +23,18 @@ jobs:
       fail-fast: false
 
     steps:
+      - name: Prepare variables
+        #The username has to be lowercase for GHCR to accept it 
+        id: vars
+        run: |
+          OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "owner_lower=$OWNER_LOWER" >> $GITHUB_OUTPUT
+
       - name: Run Trivy scan for ${{ matrix.cve }}
         uses: aquasecurity/trivy-action@master
         id: trivy
         with:
-          image-ref: ghcr.io/pi3dra/decret/${{ matrix.cve }}:latest
+          image-ref: ghcr.io/${{steps.vers.outputs.owner_lower}}/decret/${{ matrix.cve }}:latest
           format: json
           output: trivy-results.json
 

@@ -3,6 +3,7 @@ name: Build and Push containers to GHCR
 #This only runs if changes to decret itself or this workflow are made
 on:
   push:
+      #Add feature branches here
     branches:
     paths:
       - decret/decret.py
@@ -21,8 +22,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-        #I don't know if the directory flag is really needed here
-        #but just to be safe and prevent potential overwriting by the parallel matrix
           - distro: jessie
             cve: cve-2016-3714
             options: "--directory imagetragick"
@@ -69,12 +68,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build , Tag and Push Docker Images
+      - name: Build Docker Images
         run: |
           CVE_NAME="${{ matrix.cve }}"
           STRIPPED_CVE="${CVE_NAME#cve-}"
           #Build, tag and push in order
           python3 -m decret.decret -r "${{ matrix.distro }}" -n "$STRIPPED_CVE" ${{ matrix.options }} -s
-          docker tag "${{ matrix.distro }}/$CVE_NAME" "ghcr.io/pi3dra/decret/$CVE_NAME:latest"
-          docker push "ghcr.io/pi3dra/decret/$CVE_NAME:latest"
+
+      - name: Tag and Push Docker Images
+        run : | 
+          #The username has to be lowercase for GHCR to accept it 
+          OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          docker tag "${{ matrix.distro }}/${{matrix.cve}}" "ghcr.io/$OWNER_LOWER/decret/${{matrix.cve}}:latest"
+          docker push "ghcr.io/$OWNER_LOWER/decret/${{matrix.cve}}:latest"
 
