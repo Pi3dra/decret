@@ -3,8 +3,9 @@ name: Build and Push containers to GHCR
 #This only runs if changes to decret itself or this workflow are made
 on:
   push:
-      #Add feature branches here
+    #Add feature branches here
     branches:
+      - main
     paths:
       - decret/decret.py
       - decret/Dockerfile.template
