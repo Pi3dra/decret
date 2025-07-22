@@ -36,28 +36,33 @@ def check_requirements():
 
 
 # ====================== Exploits =========================
+
+PROJECT_PATH = "exploit-database%2Fexploitdb"
+FILE_PATH = "files_exploits.csv"
+URL = (
+    f"https://gitlab.com/api/v4/projects/{PROJECT_PATH}"
+    f"/repository/files/{FILE_PATH}/raw?ref=main"
+)
+
+DEST_DIR = "cached-files"
+HASH_PATH = os.path.join(DEST_DIR, "files_exploits.hash")
+CSV_PATH = os.path.join(DEST_DIR, FILE_PATH)
+
+
 def db_is_up_to_date():
     """
     Returns a tuple ( bool * string),
-    indicating if the db needs updating and the new hash if so
+    indicating if the db is up to date and the new hash if so
     """
-    project_id = "40927511"
-    file_path = "files_exploits.csv"
-    destination_dir = "cached-files"
-    hash_file_path = os.path.join(destination_dir, "files_exploits.hash")
-    url = (
-        f"https://gitlab.com/api/v4/projects/{project_id}"
-        f"/repository/files/{file_path}/raw?ref=main"
-    )
 
-    head = requests.head(url, timeout=DEFAULT_TIMEOUT)
+    head = requests.head(URL, timeout=DEFAULT_TIMEOUT)
     head.raise_for_status()
     blob_hash = head.headers["x-gitlab-blob-id"]
 
     stored_blob_hash = None
 
     try:
-        with open(hash_file_path, "r", encoding="utf-8") as file:
+        with open(HASH_PATH, "r", encoding="utf-8") as file:
             stored_blob_hash = file.read()
     except FileNotFoundError:
         return (False, blob_hash)
@@ -67,15 +72,6 @@ def db_is_up_to_date():
 
 def download_db():
     # DOCS: https://docs.gitlab.com/api/repository_files/#get-file-metadata-only
-    project_id = "40927511"  # Project ID for exploit-db
-    file_path = "files_exploits.csv"
-    destination_dir = "cached-files"
-    hash_file_path = os.path.join(destination_dir, "files_exploits.hash")
-    csv_file_path = os.path.join(destination_dir, file_path)
-    url = (
-        f"https://gitlab.com/api/v4/projects/{project_id}"
-        f"/repository/files/{file_path}/raw?ref=main"
-    )
 
     print("Cheking if the cache from exploit-db is up to date")
 
@@ -92,18 +88,18 @@ def download_db():
         return
 
     try:
-        response = requests.get(url, timeout=DEFAULT_TIMEOUT)
+        response = requests.get(URL, timeout=DEFAULT_TIMEOUT)
         response.raise_for_status()
     except RequestException as error:
-        print(f"Failed GET request from {url} with :\n{error}")
+        print(f"Failed GET request from {URL} with :\n{error}")
         return
 
-    os.makedirs(destination_dir, exist_ok=True)
+    os.makedirs(DEST_DIR, exist_ok=True)
 
     try:
-        with open(csv_file_path, "wb") as file:
+        with open(CSV_PATH, "wb") as file:
             file.write(response.content)
-        with open(hash_file_path, "w", encoding="utf-8") as file:
+        with open(HASH_PATH, "w", encoding="utf-8") as file:
             file.write(blob_hash)
         print("File downloaded and hash updated.")
     except IOError as error:
@@ -145,9 +141,8 @@ def get_exploits(args):
 
     for i, (exploit_id, path, verified) in enumerate(data):
         # Building url
-        project_id = "40927511"
         url = (
-            f"https://gitlab.com/api/v4/projects/{project_id}"
+            f"https://gitlab.com/api/v4/projects/{PROJECT_PATH}"
             f"/repository/files/{path.replace('/', '%2F')}/raw?ref=main"
         )
 
