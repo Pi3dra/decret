@@ -633,6 +633,7 @@ def display_options(cve_list):
 
 
 def choose_manually(cve_list):
+    print("Found the following configurations: ")
     choice = input("Choose a configuration (e.g. 2 or 1.2): ")
     parts = choice.split(".")
 
@@ -674,12 +675,9 @@ def main():
 
     cves = convert_tables(info_table, fixed_table)
 
-    print("Doing version and snapshot lookup")
+    print("Doing version and snapshot lookup\n")
     versions_lookup(cves, arguments)
     get_snapshots(cves, arguments)
-
-    #for cve in cves:
-    #    print(cve.to_string())
 
     if arguments.choose:
         display_options(cves)
@@ -690,6 +688,13 @@ def main():
         total = len(collapsed_list)
         print(f"Found {total} possible configurations")
         choice = choose_one(collapsed_list)
+        print(
+            "My best guess is:\n",
+            f"Release {arguments.release}\n",
+            f"Package {choice.package}\n",
+            f"Version {choice.vulnerable[0].version}\n",
+            f"Method {choice.vulnerable[0].method}\n",
+        )
 
     if not arguments.release:
         arguments.release = choice.release
@@ -704,14 +709,6 @@ def main():
     if vuln_unfixed:
         print(f"\n\nVulnerability unfixed. Using a {LATEST_RELEASE} container.\n\n")
         arguments.release = LATEST_RELEASE
-
-    print(
-        "My best guess is:\n",
-        f"Release {arguments.release}\n",
-        f"Package {choice.package}\n",
-        f"Version {choice.vulnerable[0].version}\n",
-        f"Method {choice.vulnerable[0].method}\n",
-    )
 
     download_db()
     get_exploits(arguments)
