@@ -14,6 +14,20 @@ DEBIAN_RELEASES = [
     "bookworm",
     "trixie",  # This one just helps find information easier
 ]
+
+DEFAULT_PACKAGES = ["aptitude", "nano", "adduser"]
+
+BEEFY_PACKAGES = [
+    "vim",
+    "less",
+    "wget",
+    "net-tools",
+    "psmisc",
+    "procps",
+    "iproute2",
+    "strace",
+]
+
 AVAILABLE_ON_MAIN_SITE = DEBIAN_RELEASES[-5:]
 
 LATEST_RELEASE = DEBIAN_RELEASES[-1]

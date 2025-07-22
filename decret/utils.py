@@ -11,6 +11,8 @@ import requests
 import pandas as pd  # type: ignore
 from requests.exceptions import RequestException
 from decret.config import (
+    DEFAULT_PACKAGES,
+    BEEFY_PACKAGES,
     DEFAULT_TIMEOUT,
     AVAILABLE_ON_MAIN_SITE,
     DEBIAN_RELEASES,
@@ -284,6 +286,12 @@ def arg_parsing(args=None):
         help="Do not use sudo to run docker commands",
     )
     parser.add_argument(
+        "--beefy",
+        dest="beefy",
+        action="store_true",
+        help="Installs more packages for easier analysis, see: config.py",
+    )
+    parser.add_argument(
         "--only-create-dockerfile",
         dest="only_create_dockerfile",
         action="store_true",
@@ -378,7 +386,10 @@ def write_dockerfile(args: argparse.Namespace, cve_list, source_lines: list[str]
     else:
         apt_flag = "--allow-unauthenticated --allow-downgrades"
 
-    default_packages = " ".join(["aptitude", "nano", "adduser"])
+    if args.beefy:
+        default_packages = " ".join(DEFAULT_PACKAGES + BEEFY_PACKAGES)
+    else:
+        default_packages = " ".join(DEFAULT_PACKAGES)
 
     binary_packages = []
     for cve in cve_list:
