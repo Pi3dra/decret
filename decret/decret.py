@@ -16,6 +16,8 @@ in order to build and run a vulnerable Docker container to test and
 illustrate security concepts.
 """
 
+import json
+import os
 import argparse
 import re
 from typing import Optional
@@ -77,12 +79,14 @@ class VulnerableConfig:
     and the concerned Debian release.
     """
 
-    def __init__(self, version, method):
+    # pylint: disable=too-many-arguments
+    # pylint: disable=too-many-positional-arguments
+    def __init__(self, version, method, timestamp=None, pkg_hash=None, bin_names=None):
         self.version = version
-        self.timestamp = None
         self.method = method
-        self.pkg_hash = None
-        self.bin_names = None
+        self.timestamp = timestamp
+        self.pkg_hash = pkg_hash
+        self.bin_names = bin_names
 
     def to_string(self):
         return (
@@ -91,6 +95,25 @@ class VulnerableConfig:
             f"pkg_hash: {self.pkg_hash}\n   "
             f"bin_names: {self.bin_names}\n   "
             f"method: {self.method}  "
+        )
+
+    def to_dict(self):
+        return {
+            "version": self.version,
+            "timestamp": self.timestamp,
+            "method": self.method,
+            "pkg_hash": self.pkg_hash,
+            "bin_names": self.bin_names,
+        }
+
+    @classmethod
+    def from_dict(cls, data):
+        return cls(
+            version=data.get("version"),
+            timestamp=data.get("timestamp"),
+            method=data.get("method"),
+            pkg_hash=data.get("pkg_hash"),
+            bin_names=data.get("bin_names"),
         )
 
     def get_bin_names(self, package):
@@ -195,6 +218,33 @@ class Cve:
             f"vulnerable:{vuln_version_strs}\n"
             f"advisory:\n  {self.advisory}\n "
             f"bugids:  {self.bugids} \n "
+        )
+
+    def to_dict(self):
+        """Convert instance to dictionary."""
+        assert self.vulnerable is not None
+
+        return {
+            "package": self.package,
+            "release": self.release,
+            "fixed": self.fixed,
+            "advisory": self.advisory,
+            "bugids": self.bugids,
+            "vulnerable": [entry.to_dict() for entry in self.vulnerable],
+        }
+
+    @classmethod
+    def from_dict(cls, data):
+        """Create instance from dictionary."""
+        return cls(
+            package=data.get("package"),
+            release=data.get("release"),
+            fixed=data.get("fixed"),
+            advisory=data.get("advisory"),
+            bugids=data.get("bugids"),
+            vulnerable=[
+                VulnerableConfig.from_dict(entry) for entry in data.get("vulnerable")
+            ],
         )
 
     def init_vulnerable(self):
@@ -618,30 +668,32 @@ def choose_one(collapsed_list):
 
 
 def display_options(cve_list):
-    # Might be cleaner if we clump by packages?
+    print("Found the following configurations: ")
     for i, cve in enumerate(cve_list, start=1):
         if len(cve.vulnerable) > 1:
-            print(f"{i} Release: {cve.release}, Package:{cve.package}")
+            print(f"{i} Release: {cve.release}, Package: {cve.package}")
             for x, vuln_config in enumerate(cve.vulnerable, start=1):
                 print(f"  {x}: Version: {vuln_config.version}")
         else:
             print(
                 f"{i} Release: {cve.release}",
-                f"Package:{cve.package}",
+                f"Package: {cve.package}",
                 f"Version: {cve.vulnerable[0].version}",
             )
 
 
 def choose_manually(cve_list):
-    print("Found the following configurations: ")
     choice = input("Choose a configuration (e.g. 2 or 1.2): ")
     parts = choice.split(".")
 
     try:
         if len(parts) == 1:
+            chosen_cve = cve_list[int(parts[0]) - 1]
             if int(parts[0]) < 1:
                 raise ValueError("Index must be >= 1")
-            return cve_list[int(parts[0]) - 1]
+            if len(chosen_cve.vulnerable) > 1:
+                raise ValueError("This CVE has multiple choices")
+            return chosen_cve
 
         if len(parts) == 2:
             if int(parts[0]) < 1 or int(parts[1]) < 1:
@@ -650,7 +702,7 @@ def choose_manually(cve_list):
             if len(chosen_cve.vulnerable) == 1:
                 raise ValueError("The chosen CVE doesn't have multiple choices")
             chosen_config = chosen_cve.vulnerable[int(parts[1]) - 1]
-            chosen_cve.vulnerable = chosen_config
+            chosen_cve.vulnerable = [chosen_config]
             return chosen_cve
         # If parts is not length 1 or 2, treat as invalid input
         raise ValueError("Invalid input format")
@@ -659,25 +711,77 @@ def choose_manually(cve_list):
         return choose_manually(cve_list)
 
 
+def cache_to_json(cve_list, cve_number):
+    directory = "cached-files"
+    os.makedirs(directory, exist_ok=True)
+
+    data = {"cve_list": [cve.to_dict() for cve in cve_list]}
+    with open(f"cached-files/{cve_number}.json", "w", encoding="utf-8") as file:
+        json.dump(data, file, indent=2)
+
+
+def load_from_json(cve_number):
+    with open(f"cached-files/{cve_number}.json", "r", encoding="utf-8") as file:
+        data = json.load(file)
+    cve_list = data.get("cve_list", [])
+    cve_list = [Cve.from_dict(data) for data in cve_list]
+    return cve_list
+
+
+def handle_data_retrieval(args):
+    """
+    This function handles how data is retrieved, either through the cache or
+    web lookup, it also handles updating the cache.
+    returns a list of Cve objects
+    """
+    cves = None
+
+    if not args.no_cache_lookup:
+        try:
+            cves = load_from_json(args.cve_number)
+            print("Loaded CVE data from cache, to disable use --no-cache-lookup\n")
+        except FileNotFoundError:
+            print("No cached file found, performing table lookup.")
+        except json.JSONDecodeError as e:
+            print(f"Failed to load cached file: {e}, performing table lookup.")
+
+    if cves is None:
+        try:
+            print(
+                "\nGetting information from:\n",
+                "https://security-tracker.debian.org"
+                f"/tracker/CVE-{args.cve_number}\n",
+            )
+            info_table, fixed_table = get_cve_tables(args)
+        except CVENotFound as error:
+            raise CVENotFound from error
+
+        if args.release and args.choose:
+            print(
+                "Warning: --release filtering applied, "
+                "cache file will only store table entries for this release\n"
+                "loading from cache can be disabled with --no-cache-lookup, "
+                "this also updates the cache\n"
+            )
+        cves = convert_tables(info_table, fixed_table)
+
+        print("Doing version and snapshot lookup\n")
+        versions_lookup(cves, args)
+        get_snapshots(cves, args)
+        print("Caching results\n")
+        cache_to_json(cves, args.cve_number)
+
+    return cves
+
+
 def main():
-    # Run nteractively
     arguments = init_decret()
-    print(
-        "\nGetting information from:\n",
-        f"https://security-tracker.debian.org/tracker/CVE-{arguments.cve_number}\n",
-    )
 
     try:
-        info_table, fixed_table = get_cve_tables(arguments)
+        cves = handle_data_retrieval(arguments)
     except CVENotFound as error:
-        print(f"Decret failed to retrieve the data with: \n{error}")
+        print(f"Failed to retrieve data for this CVE with: {error}")
         return
-
-    cves = convert_tables(info_table, fixed_table)
-
-    print("Doing version and snapshot lookup\n")
-    versions_lookup(cves, arguments)
-    get_snapshots(cves, arguments)
 
     if arguments.choose:
         display_options(cves)
@@ -690,7 +794,7 @@ def main():
         choice = choose_one(collapsed_list)
         print(
             "My best guess is:\n",
-            f"Release {arguments.release}\n",
+            f"Release {choice.release}\n",
             f"Package {choice.package}\n",
             f"Version {choice.vulnerable[0].version}\n",
             f"Method {choice.vulnerable[0].method}\n",

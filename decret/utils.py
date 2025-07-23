@@ -14,7 +14,7 @@ from decret.config import (
     DEFAULT_PACKAGES,
     BEEFY_PACKAGES,
     DEFAULT_TIMEOUT,
-    AVAILABLE_ON_MAIN_SITE,
+    SUPPORTED_RELEASES,
     DEBIAN_RELEASES,
     RUNS_ON_GITHUB_ACTIONS,
     DOCKER_SHARED_DIR,
@@ -261,11 +261,10 @@ def arg_parsing(args=None):
         help="Manually choose a vulnerable configuration",
     )
     parser.add_argument(
-        "-p",
-        "--package",
-        dest="package",
-        type=str,
-        help="Name of the package targeted.",
+        "--no-cache-lookup",
+        dest="no_cache_lookup",
+        action="store_true",
+        help="Forces to search online, updates cache",
     )
     parser.add_argument(
         "--port",
@@ -400,7 +399,7 @@ def write_dockerfile(args: argparse.Namespace, cve_list, source_lines: list[str]
 
     # Old reseases should only use the snapshot sources
     content = template.render(
-        clear_sources=args.release not in AVAILABLE_ON_MAIN_SITE,
+        clear_sources=args.release not in SUPPORTED_RELEASES,
         debian_release=args.release,
         source_lines=source_lines,
         apt_flag=apt_flag,
