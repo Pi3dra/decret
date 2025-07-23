@@ -11,6 +11,7 @@ import requests
 import pandas as pd  # type: ignore
 from requests.exceptions import RequestException
 from decret.config import (
+    CACHE_PATH,
     DEFAULT_PACKAGES,
     BEEFY_PACKAGES,
     DEFAULT_TIMEOUT,
@@ -39,16 +40,15 @@ def check_requirements():
 
 # ====================== Exploits =========================
 
-PROJECT_PATH = "exploit-database%2Fexploitdb"
 FILE_PATH = "files_exploits.csv"
+PROJECT_PATH = "exploit-database%2Fexploitdb"
 URL = (
     f"https://gitlab.com/api/v4/projects/{PROJECT_PATH}"
     f"/repository/files/{FILE_PATH}/raw?ref=main"
 )
 
-DEST_DIR = "cached-files"
-HASH_PATH = os.path.join(DEST_DIR, "files_exploits.hash")
-CSV_PATH = os.path.join(DEST_DIR, FILE_PATH)
+HASH_PATH = CACHE_PATH / "files_exploits.hash"
+CSV_PATH = CACHE_PATH / FILE_PATH
 
 
 def db_is_up_to_date():
@@ -96,7 +96,7 @@ def download_db():
         print(f"Failed GET request from {URL} with :\n{error}")
         return
 
-    os.makedirs(DEST_DIR, exist_ok=True)
+    os.makedirs(CACHE_PATH, exist_ok=True)
 
     try:
         with open(CSV_PATH, "wb") as file:
@@ -113,7 +113,7 @@ def get_exploits(args):
     print("The cached file is in: cached-files/files_exploits.csv")
 
     try:
-        data = pd.read_csv("cached-files/files_exploits.csv")
+        data = pd.read_csv(CACHE_PATH / FILE_PATH)
     except FileNotFoundError:
         download_db()
         try:
@@ -149,7 +149,7 @@ def get_exploits(args):
         )
 
         # Show sources
-        print(f"https://www.exploit-db.com/exploits/{exploit_id}")
+        print(f"https://www.exploit-db.com/exploits/{exploit_id}\n")
 
         # Building path
         file_extension = os.path.splitext(path)[1]
@@ -161,7 +161,7 @@ def get_exploits(args):
         # Fetching exploits
         response = requests.get(url, timeout=DEFAULT_TIMEOUT)
         if response.status_code == 200:
-            os.makedirs("cached-files", exist_ok=True)
+            os.makedirs(CACHE_PATH, exist_ok=True)
             with open(exploit_path, "wb") as file:
                 file.write(response.content)
         else:
