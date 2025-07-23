@@ -149,7 +149,7 @@ def arg_parsing(args=None):
         "--dont-run",
         dest="dont_run",
         action="store_true",
-        help="Do not build nor run the created docker",
+        help="Build but don't run the created image",
     )
     parser.add_argument(
         "--cache-main-json-file",
@@ -658,4 +658,3 @@ def main():  # pragma: no cover
         return
 
     run_docker(args)
-
