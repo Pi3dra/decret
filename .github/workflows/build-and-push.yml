@@ -74,7 +74,7 @@ jobs:
           CVE_NAME="${{ matrix.cve }}"
           STRIPPED_CVE="${CVE_NAME#cve-}"
           #Build, tag and push in order
-          python3 -m decret.decret -r "${{ matrix.distro }}" -n "$STRIPPED_CVE" ${{ matrix.options }} -s
+          python3 -m decret -r "${{ matrix.distro }}" -n "$STRIPPED_CVE" ${{ matrix.options }} -s
 
       - name: Tag and Push Docker Images
         run : | 

@@ -34,7 +34,7 @@ jobs:
         uses: aquasecurity/trivy-action@master
         id: trivy
         with:
-          image-ref: ghcr.io/${{steps.vers.outputs.owner_lower}}/decret/${{ matrix.cve }}:latest
+          image-ref: ghcr.io/${{steps.vars.outputs.owner_lower}}/decret/${{ matrix.cve }}:latest
           format: json
           output: trivy-results.json
 
