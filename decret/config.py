@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 DEBIAN_RELEASES = [
     "woody",
@@ -35,6 +36,7 @@ LATEST_RELEASE = DEBIAN_RELEASES[-1]
 DEFAULT_TIMEOUT = 10
 
 DOCKER_SHARED_DIR = "/tmp/decret"
+CACHE_PATH = Path("./cached-files/")
 
 RUNS_ON_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
 

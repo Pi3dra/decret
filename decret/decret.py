@@ -21,11 +21,13 @@ import os
 import argparse
 import re
 from typing import Optional
+from pathlib import Path
 import sys
 import requests
 from bs4 import BeautifulSoup, Tag
 from requests.exceptions import RequestException
 from decret.config import (
+    CACHE_PATH,
     DEFAULT_TIMEOUT,
     DEBIAN_RELEASES,
     LATEST_RELEASE,
@@ -712,16 +714,18 @@ def choose_manually(cve_list):
 
 
 def cache_to_json(cve_list, cve_number):
-    directory = "cached-files"
-    os.makedirs(directory, exist_ok=True)
+    os.makedirs(CACHE_PATH, exist_ok=True)
 
     data = {"cve_list": [cve.to_dict() for cve in cve_list]}
-    with open(f"cached-files/{cve_number}.json", "w", encoding="utf-8") as file:
+
+    file_path = CACHE_PATH / f"{cve_number}.json"
+    with open(file_path, "w", encoding="utf-8") as file:
         json.dump(data, file, indent=2)
 
 
 def load_from_json(cve_number):
-    with open(f"cached-files/{cve_number}.json", "r", encoding="utf-8") as file:
+    file_path = CACHE_PATH / f"{cve_number}.json"
+    with open(file_path, "r", encoding="utf-8") as file:
         data = json.load(file)
     cve_list = data.get("cve_list", [])
     cve_list = [Cve.from_dict(data) for data in cve_list]
