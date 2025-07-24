@@ -1,12 +1,22 @@
 FROM debian:{{debian_release}}
 
-{% for source_line in source_lines %}RUN echo '{{source_line}}' >> /etc/apt/sources.list.d/snapshot.list
+{% if clear_sources %}
+RUN echo -n "" > /etc/apt/sources.list
+{% endif %}
+
+{% for source_line in source_lines %}
+RUN echo '{{source_line}}' >> /etc/apt/sources.list.d/snapshot.list
 {% endfor %}
 
 RUN apt-get update
-{% if default_packages %}RUN apt-get install -y {{apt_flag}} --fix-missing {{default_packages}}
+{% if default_packages %}
+RUN apt-get install -y {{apt_flag}} --fix-missing {{default_packages}}
 {% endif %}
 RUN DEBIAN_FRONTEND=non-interactive aptitude -y --allow-untrusted -o Aptitude::ProblemResolver::SolutionCost='100*canceled-actions,200*removals' install {{package_name}}
+
+{% if copy_exploits %}
+COPY ./exploit* /tmp/decret_copy/
+{% endif %}
 
 ARG USERNAME=toto
 ARG PASSWORD=toto

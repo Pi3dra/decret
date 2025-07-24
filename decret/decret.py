@@ -19,6 +19,7 @@ illustrate security concepts.
 from typing import Tuple
 
 import argparse
+import os
 import json
 from pathlib import Path
 import re
@@ -33,6 +34,7 @@ from selenium.webdriver.common.by import By
 from selenium.common.exceptions import WebDriverException
 
 DEBIAN_RELEASES = [
+    "woody",
     "sarge",
     "etch",
     "lenny",
@@ -43,13 +45,25 @@ DEBIAN_RELEASES = [
     "buster",
     "bullseye",
     "bookworm",
+    "trixie",  # This one just helps find information easier
 ]
+
+
+# The releases available here: http://ftp.debian.org/debian/ crash if the
+# sources.list is overwriten to only use the snapshot, meanwhile those
+# who are not here need to strictly use the snapshot if not they crash
+AVAILABLE_ON_MAIN_SITE = DEBIAN_RELEASES[-5:]
 
 LATEST_RELEASE = DEBIAN_RELEASES[-1]
 
 DEFAULT_TIMEOUT = 10
 
 DOCKER_SHARED_DIR = "/tmp/decret"
+
+# makes testing easier:
+# -Copies the mounted folder with exploits on the image
+# -Avoids running the image interactively after build
+RUNS_ON_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
 
 
 class FatalError(BaseException):
@@ -132,6 +146,12 @@ def arg_parsing(args=None):
         help="Do not build nor run the created docker",
     )
     parser.add_argument(
+        "--dont-run",
+        dest="dont_run",
+        action="store_true",
+        help="Build but don't run the created image",
+    )
+    parser.add_argument(
         "--cache-main-json-file",
         dest="cache_main_json_file",
         type=str,
@@ -153,7 +173,7 @@ def arg_parsing(args=None):
     namespace = parser.parse_args(args)
 
     if re.match(r"^CVE-2\d{3}-(0\d{3}|[1-9]\d{3,})$", namespace.cve_number):
-        namespace.cve_number=namespace.cve_number[4:]
+        namespace.cve_number = namespace.cve_number[4:]
     elif not re.match(r"^2\d{3}-(0\d{3}|[1-9]\d{3,})$", namespace.cve_number):
         parser.print_usage(sys.stderr)
         raise FatalError("Wrong CVE format.")
@@ -428,7 +448,7 @@ def get_hash_and_bin_names(
 def get_snapshot(cve_details: list[dict]):
     snapshot_id = []
     for item in cve_details:
-        value = item.get('hash')
+        value = item.get("hash")
         if value is None:
             print(f"Not found in '{item}'")
         else:
@@ -436,7 +456,6 @@ def get_snapshot(cve_details: list[dict]):
 
             response = requests.get(url, timeout=DEFAULT_TIMEOUT).json()["result"][-1]
             snapshot_id.append(response["first_seen"])
-        
 
     if not snapshot_id:
         raise Exception("Snapshot id not found.")
@@ -459,13 +478,17 @@ def write_cmdline(args: argparse.Namespace):
 
 
 def prepare_sources(snapshot_id: str, vuln_fixed: bool):
-    options = "[check-valid-until=no allow-insecure=yes allow-downgrade-to-insecure=yes]"
+    options = (
+        "[check-valid-until=no allow-insecure=yes allow-downgrade-to-insecure=yes]"
+    )
     url = f"http://snapshot.debian.org/archive/debian/{snapshot_id}/"
     if vuln_fixed:
         release = ["testing", "stable", "unstable"]
-    return [f"deb {options} {url} {rel} main" for rel in release]
+        return [f"deb {options} {url} {rel} main" for rel in release]
+    return []
 
 
+# pylint: disable=too-many-locals
 def write_dockerfile(args: argparse.Namespace, cve_details, source_lines: list[str]):
     target_dockerfile = args.directory / "Dockerfile"
     decret_rootpath = Path(__file__).resolve().parent
@@ -473,27 +496,31 @@ def write_dockerfile(args: argparse.Namespace, cve_details, source_lines: list[s
     template_content = src_template.read_text()
     template = jinja2.Environment().from_string(template_content)
 
-    if args.release in DEBIAN_RELEASES[:6]:
+    if args.release in DEBIAN_RELEASES[:7]:
         apt_flag = "--force-yes"
     else:
         apt_flag = "--allow-unauthenticated --allow-downgrades"
 
     default_packages = " ".join(["aptitude", "nano", "adduser"])
-
     binary_packages = []
     for item in cve_details:
         for bin_name in item["bin_name"]:
             bin_name_and_version = [bin_name + f"={item['vuln_version']}"]
             binary_packages.extend(bin_name_and_version)
 
+    # Old reseases should only use the snapshot sources
+    clear_sources = args.release not in AVAILABLE_ON_MAIN_SITE
+
     content = template.render(
+        clear_sources=clear_sources,
         debian_release=args.release,
         source_lines=source_lines,
         apt_flag=apt_flag,
         default_packages=default_packages,
         package_name=" ".join(binary_packages),
         run_lines=args.run_lines,
-        cmd_line=args.cmd_line
+        cmd_line=args.cmd_line,
+        copy_exploits=RUNS_ON_GITHUB_ACTIONS,
     )
     target_dockerfile.write_text(content)
 
@@ -517,6 +544,7 @@ def build_docker(args):
         subprocess.run(build_cmd, check=True)
     except subprocess.CalledProcessError as exc:
         raise FatalError("Error while building the container") from exc
+
 
 def run_docker(args):
     docker_image_name = f"{args.release}/cve-{args.cve_number}"
@@ -564,6 +592,7 @@ def init_decret():  # pragma: no cover
             args.selenium = None
 
     return args, browser
+
 
 def main():  # pragma: no cover
     args, browser = init_decret()
@@ -624,12 +653,8 @@ def main():  # pragma: no cover
         print("My work here is done.")
         return
     build_docker(args)
+    if args.dont_run or RUNS_ON_GITHUB_ACTIONS:
+        print("My work here is done.")
+        return
+
     run_docker(args)
-
-
-if __name__ == "__main__":  # pragma: no cover
-    try:
-        main()
-    except FatalError as fatal_exc:
-        print(fatal_exc, file=sys.stderr)
-        sys.exit(1)

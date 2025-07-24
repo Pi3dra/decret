@@ -16,7 +16,7 @@ This code is released under the terms of the BSD 3-Clause license. See the `lice
 - Firefox
 
 
-## Build
+## Build and Usage
 
 On Debian stable, a simple way to install DECRET is to first run the
 following commands as `root`:
@@ -41,11 +41,44 @@ $ pip install -r requirements-minimal.txt
 You can use `requirements.txt` if you want to run the tests which are
 run in the Continuous Integration pipeline.
 
+Finally you can run decret like so:
+
+```
+python3 -m decret -n 2020-7247 -r bullseye --selenium
+```
+
+and see available arguments like so:
+
+```
+python3 -m decret -h 
+```
 
 ## Example
 
 You can find examples in the `examples` directory.
 
+## Contributing
+
+### Structure
+1. ***/decret:*** Main Python source code
+2. ***/tests:*** This is where the pytest code lives
+3. ***/examples:*** Markdown files illustrating working examples
+
+
+### Instructions
+1. Fork this repository
+2. Create a new branch: `git checkout -b feature/your-feature-name`
+3. Make your changes, commit, push to feature branch etc
+4. Ensure tests and linters pass
+
+Our GitHub Actions run pylint, and pytest. Run them locally if possible:
+```shell
+black .
+pylint decret/
+pytest
+```
+5. Verify your code passes CI tests under `.github/workflows`
+6. Open pull request
 
 ## Working principle
 
