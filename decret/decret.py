@@ -21,8 +21,6 @@ import os
 import argparse
 import re
 from typing import Optional
-from pathlib import Path
-import sys
 import requests
 from bs4 import BeautifulSoup, Tag
 from requests.exceptions import RequestException
@@ -32,7 +30,6 @@ from decret.config import (
     DEBIAN_RELEASES,
     LATEST_RELEASE,
     RUNS_ON_GITHUB_ACTIONS,
-    FatalError,
     CVENotFound,
 )
 
@@ -350,7 +347,7 @@ class Cve:
         if not versions:
             raise CVENotFound(f"bug { self.bugids} has no 'Found in version' tag")
 
-    def bug_version_lookup(self, args, check=False):
+    def bug_version_lookup(self, args, already_visited, check=False):
         self.init_vulnerable()
 
         if self.bugids is None or self.vulnerable is None:
@@ -358,14 +355,16 @@ class Cve:
                 f"package {self.package} for {self.release} has no bugids"
             )
 
-        for i, (bugid, used) in enumerate(self.bugids):
+        for bugid in self.bugids:
             if bugid < 40000:
                 print(
                     f"The bugId : {bugid} might no longer be available, triying anyways"
                 )
 
-            if not used:
-                self.bugids[i] = (bugid, True)
+            if bugid in already_visited.keys():
+                versions = already_visited[bugid]
+                self._handle_versions(already_visited[bugid], check)
+            else:
                 url = f"https://bugs.debian.org/cgi-bin/bugreport.cgi?bug={bugid}"
                 try:
                     # This can be very slow
@@ -377,6 +376,7 @@ class Cve:
                     if check:
                         self._bugreport_mentions_cve(content, args.cve_number)
                     versions = self._extract_versions(content, bugid)
+                    already_visited[bugid] = versions
                     self._handle_versions(versions, check)
 
                 except RequestException as error:
@@ -384,7 +384,7 @@ class Cve:
                         f"requests: Error accesing bug report: {error}"
                     ) from error
 
-    def dsa_version_lookup(self, args):
+    def dsa_version_lookup(self, args, visited_bugids):
         self.init_vulnerable()
         if self.bugids is None:
             self.bugids = []
@@ -416,29 +416,30 @@ class Cve:
         bug_pattern = r"Debian Bug\s*:\s*([\d\s]+)"
         bug_match = re.search(bug_pattern, advisory_text)
         bug_ids = bug_match.group(1).strip().split() if bug_match else []
-        bug_ids = [(int(bugid), False) for bugid in bug_ids]
+        bug_ids = [int(bugid) for bugid in bug_ids]
         if not bug_ids:
             raise CVENotFound("No Debian Bug IDs found in the security advisory")
 
         # Now that we found the bugIds we try and find a version behind these bugIds
         self.bugids.extend(bug_ids)
-        self.bug_version_lookup(args, check=True)
+        self.bug_version_lookup(args, visited_bugids, check=True)
 
-    def vulnerable_versions_lookup(self, args):
+    def vulnerable_versions_lookup(self, args, visited_bugids):
         debug(f"\nFINDING version for: {self.package},{self.release}")
         try:
             debug("ATTEMTPING to find version with bugid")
-            self.bug_version_lookup(args)
+            self.bug_version_lookup(args, visited_bugids)
         except (SearchError, CVENotFound) as error:
             debug(f"BUGID failed with:\n\t{error}\n")
             debug("ATTEMPTING to find version with DSA")
             try:
-                self.dsa_version_lookup(args)
+                self.dsa_version_lookup(args, visited_bugids)
             except (SearchError, CVENotFound) as error2:
                 debug(f"DSA failed with:\n\t{error2}\n")
 
                 # DSA lookup can find many bugids, which can fail
                 # We only search with N-1 if all of them failed
+                assert self.vulnerable is not None
                 found_any = any(
                     config.method == "DSA"
                     for config in self.vulnerable
@@ -604,7 +605,7 @@ def convert_tables(info_table, fixed_table):
             release="sid" if line[2] == "(unstable)" else line[2],
             fixed=line[3],
             advisory=None if line[5] == "" else line[5],
-            bugids=None if bug_id is None else [(bug_id, False)],
+            bugids=None if bug_id is None else [bug_id],
             vulnerable=[],
         )
         convert_results.append(config)
@@ -624,9 +625,10 @@ def convert_tables(info_table, fixed_table):
 
 def versions_lookup(cve_list, args):
     # might be smart to use flags to filter which method to use
+    visited_bugids = {}
     for cve in cve_list:
         if cve.vulnerable == []:
-            cve.vulnerable_versions_lookup(args)
+            cve.vulnerable_versions_lookup(args, visited_bugids)
 
 
 def get_snapshots(cve_list, args):
@@ -834,3 +836,5 @@ def main():
     if arguments.dont_run or RUNS_ON_GITHUB_ACTIONS:
         print("My work here is done.")
         return
+
+    run_docker(arguments)

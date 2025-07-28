@@ -1,5 +1,6 @@
 import sys
-from decret.decret import main, FatalError
+from decret.decret import main
+from decret.config import FatalError
 
 try:
     main()

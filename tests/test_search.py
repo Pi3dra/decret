@@ -126,7 +126,7 @@ def check_cve(config, package, release, fixed, advisory=None, bugid=None):
         and config.release == release
         and config.fixed == fixed
         and config.advisory == advisory
-        and (config.bugids is None or any(bug[0] == bugid for bug in config.bugids))
+        and (config.bugids is None or any(bug == bugid for bug in config.bugids))
     )
 
 
