@@ -1,4 +1,5 @@
-# DEbian Cve REproducer Tool (DECRET)
+![](./img/Banner.png)
+# DEbian Cve REproducer Tool 
 
 This tool reproduces a vulnerable Debian environment for a given CVE number.  
 
@@ -82,4 +83,7 @@ pytest
 
 ## Working principle
 
-![](./img/reproduction_implementation.png)
+![](./img/implementation.png)
+
+---
+Disclaimer: Endorsed by, or sponsored by the Debian Project. The Debian name and logo are trademarks of Software in the Public Interest, Inc. The Debian logo is used here solely to indicate that this software is designed to work with Debian-based systems, in accordance with Debian’s trademark guidelines.
