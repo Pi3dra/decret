@@ -523,11 +523,11 @@ def get_cve_tables(args: argparse.Namespace):
             )
 
         info_table, fixed_table = clean_tables(info_table, fixed_table)
-        info_table, fixed_table = filter_tables(info_table, fixed_table, args)
+        info_table, fixed_table = filter_tables(info_table, fixed_table)
 
         if info_table == [] and fixed_table == []:
             if args.release is not None:
-                message = ", seems like the specified release was never vulnerable"
+                message = ",or the specified release was never vulnerable"
             else:
                 message = ""
             raise CVENotFound(
@@ -568,12 +568,13 @@ def clean_tables(info_table, fixed_table):
     return info_table, fixed_table
 
 
-def filter_tables(info_table, fixed_table, args):
+def filter_tables(info_table, fixed_table):
+    # This functions only filters useless entries,
+    # for filtering through flags see: collapse_list
     fixed_table = [
         line
         for line in fixed_table
         if "(not affected)" not in line
-        and (not args.release or args.release in line)
         and any(release in line for release in DEBIAN_RELEASES + ["(unstable)"])
     ]
 
@@ -643,11 +644,12 @@ def get_snapshots(cve_list, args):
 
 
 def collapse_list(cve_list, args):
-    # For the time being if a bug report has many affected versions we take the first one:
-    # And we filter out unwanted packages
     collapsed = []
     for cve in cve_list:
-        if args.bin_package is not None and args.bin_package not in cve.package:
+        # We apply filtering here
+        if (args.bin_package is not None and args.bin_package not in cve.package) or (
+            args.release is not None and args.release not in cve.release
+        ):
             continue
         cve.choose_one()
         collapsed.append(cve)
@@ -762,13 +764,6 @@ def handle_data_retrieval(args):
         except CVENotFound as error:
             raise CVENotFound from error
 
-        if args.release and args.choose:
-            print(
-                "Warning: --release filtering applied, "
-                "cache file will only store table entries for this release\n"
-                "loading from cache can be disabled with --no-cache-lookup, "
-                "this also updates the cache\n"
-            )
         cves = convert_tables(info_table, fixed_table)
 
         print("Doing version and snapshot lookup\n")

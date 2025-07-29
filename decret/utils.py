@@ -6,9 +6,7 @@ import sys
 import argparse
 import jinja2
 import requests
-
-# Pandas doesn't have type hints for mypy
-import pandas as pd  # type: ignore
+import pandas as pd
 from requests.exceptions import RequestException
 from decret.config import (
     CACHE_PATH,

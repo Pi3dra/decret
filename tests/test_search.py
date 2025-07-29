@@ -43,7 +43,7 @@ def filtered_tables(found_tables):
     args = argparse.Namespace()
     args.release = False
     for cve, (info_table, fixed_table) in found_tables.items():
-        info_table, fixed_table = filter_tables(info_table, fixed_table, args)
+        info_table, fixed_table = filter_tables(info_table, fixed_table)
         results[cve] = (info_table, fixed_table)
     return results
 
