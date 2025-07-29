@@ -23,6 +23,7 @@ import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import pytest
+from decret.decret import *
 
 
 @pytest.fixture
@@ -45,3 +46,95 @@ def wheezy_args():
         bin_package=None,
         vulnerable_version=None,
     )
+
+
+@pytest.fixture
+def cve_numbers():
+    file_path = "tests/test-material/cves.txt"
+    try:
+        with open(file_path, "r") as file:
+            return [line.strip() for line in file if line.strip()]
+    except Exception as e:
+        pytest.fail(f"Error reading CVE file: {str(e)}")
+
+
+@pytest.fixture
+def found_tables(cve_numbers):
+    results = {}
+    errored_on_search = []
+
+    for cve_number in cve_numbers:
+        args = argparse.Namespace()
+        args.cve_number = cve_number
+        args.release = None
+
+        try:
+            info_table, fixed_table = get_cve_tables(args)
+            results[cve_number] = (info_table, fixed_table)
+        except Exception as e:
+            errored_on_search.append((cve_number, e))
+            continue
+    return results
+
+
+@pytest.fixture
+def filtered_tables(found_tables):
+    results = {}
+    args = argparse.Namespace()
+    args.release = False
+    for cve, (info_table, fixed_table) in found_tables.items():
+        info_table, fixed_table = filter_tables(info_table, fixed_table)
+        results[cve] = (info_table, fixed_table)
+    return results
+
+
+@pytest.fixture
+def converted_tables(filtered_tables):
+    results = {}
+    for cve, (info_table, fixed_table) in filtered_tables.items():
+        cve_list = convert_tables(info_table, fixed_table)
+        results[cve] = cve_list
+    return results
+
+
+@pytest.fixture
+def vuln_configs(converted_tables):
+    for cve_number, cve_list in converted_tables.items():
+        args = argparse.Namespace()
+        args.cve_number = cve_number
+
+        versions_lookup(cve_list, args)
+
+    return converted_tables
+
+
+@pytest.fixture
+def timestamps(vuln_configs):
+    for cve_number, cve_list in vuln_configs.items():
+        args = argparse.Namespace()
+        args.cve_number = cve_number
+        get_snapshots(cve_list, args)
+    return vuln_configs
+
+
+@pytest.fixture
+def collapsed_lists(timestamps):
+    results = {}
+    for cve_number, cve_list in timestamps.items():
+        args = argparse.Namespace()
+        args.bin_package = None
+        args.release = None
+        cve_list = collapse_list(cve_list, args)
+        results[cve_number] = cve_list
+
+    return results
+
+
+@pytest.fixture
+def chosen_configs(collapsed_lists):
+    results = {}
+    for cve_number, cve_list in collapsed_lists.items():
+        choice = choose_one(cve_list)
+        results[cve_number] = choice
+
+    return results

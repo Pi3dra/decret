@@ -2,50 +2,8 @@ import pytest
 from decret.decret import *
 import re
 
-# ===================== Global Fixtures =====================
-
-
-@pytest.fixture(scope="session")
-def cve_numbers():
-    file_path = "tests/test-material/cves.txt"
-    try:
-        with open(file_path, "r") as file:
-            return [line.strip() for line in file if line.strip()]
-    except Exception as e:
-        pytest.fail(f"Error reading CVE file: {str(e)}")
-
 
 # ===================== TESTING Finding and cleaning Tables =====================
-
-
-@pytest.fixture(scope="session")
-def found_tables(cve_numbers):
-    results = {}
-    errored_on_search = []
-
-    for cve_number in cve_numbers:
-        args = argparse.Namespace()
-        args.cve_number = cve_number
-        args.release = None
-
-        try:
-            info_table, fixed_table = get_cve_tables(args)
-            results[cve_number] = (info_table, fixed_table)
-        except Exception as e:
-            errored_on_search.append((cve_number, e))
-            continue
-    return results
-
-
-@pytest.fixture(scope="session")
-def filtered_tables(found_tables):
-    results = {}
-    args = argparse.Namespace()
-    args.release = False
-    for cve, (info_table, fixed_table) in found_tables.items():
-        info_table, fixed_table = filter_tables(info_table, fixed_table)
-        results[cve] = (info_table, fixed_table)
-    return results
 
 
 validation_rules_fixed = [
@@ -108,16 +66,22 @@ def test_filterting_tables(filtered_tables):
             assert "(security)" not in line  # Not yet implemented
 
 
+def test_should_fail():
+    # CVE-2005-2433 (itp)
+    # CVE-2002-0807 (NO TABLES)
+    # CVE-2006-2625 (Reserved)
+    # CVE-2021-4134 (Not for us)
+    test = ["2005-2433", "2002-0807", "2006-2625", "2021-4134"]
+    for cve_number in test:
+        args = argparse.Namespace()
+        args.cve_number = cve_number
+        args.no_cache_lookup = False
+        args.release = None
+        with pytest.raises(CVENotFound):
+            handle_data_retrieval(args)
+
+
 # ===================== TESTING Conversion to cve object list =====================
-
-
-@pytest.fixture(scope="session")
-def converted_tables(filtered_tables):
-    results = {}
-    for cve, (info_table, fixed_table) in filtered_tables.items():
-        cve_list = convert_tables(info_table, fixed_table)
-        results[cve] = cve_list
-    return results
 
 
 def check_cve(config, package, release, fixed, advisory=None, bugid=None):
@@ -137,12 +101,6 @@ def test_converted_list(converted_tables):
 
     # Might be smart to do this on static examples so it works
     # without webpage
-
-    # TODO: CHECK EDGE CASES
-    # CVE-2005-2433 (itp)
-    # CVE-2002-0807 (NO TABLES)
-    # CVE-2006-2625 (Reserved)
-    # CVE-2021-4134 (Not for us)
 
     cve = converted_tables
 
@@ -198,17 +156,6 @@ def test_converted_list(converted_tables):
 # ===================== TESTING Finding Vulnerable versions =====================
 
 
-@pytest.fixture(scope="session")
-def vuln_configs(converted_tables):
-    for cve_number, cve_list in converted_tables.items():
-        args = argparse.Namespace()
-        args.cve_number = cve_number
-
-        versions_lookup(cve_list, args)
-
-    return converted_tables
-
-
 def count_configs(vuln_configs):
     counter = {"Vulnerable": 0, "DSA": 0, "N-1": 0, "Bug": 0}
     results = {}
@@ -223,7 +170,6 @@ def count_configs(vuln_configs):
 
     return (counter, results)
 
-
 def check_counts(count, vuln, dsa, preceding, bug):
     return (
         count["Vulnerable"] == vuln
@@ -233,19 +179,50 @@ def check_counts(count, vuln, dsa, preceding, bug):
     )
 
 
+
+
 def test_finding_vuln_configs(vuln_configs):
     results = count_configs(vuln_configs)
 
-    # is a global counter really useful?
     cve = results[1]
 
-    # For the time being we only reason based on
-    # the number of vulnerable configs found and the
-    # methods used, not if the version is vulnerable or not,
-    # I have yet to implement how to choose the best vulnerable config
+    # This verifies the proper amount of
+    # vulnerable configurations is found
     check_counts(results[0], 1, 0, 7, 5)
     print(results[0])
     assert cve["2020-7247"]
     assert cve["2014-0160"]
     assert cve["2021-3156"]
     assert cve["2020-35448"]
+
+
+# Timestamps should probably be tested as well...
+
+
+# ===================== TESTING Version Choices =====================
+def test_collapsed_list(collapsed_lists):
+    # The idea here is to keep a single promising configuration for each entry
+    assert len(collapsed_lists) > 0
+    for cve_list in collapsed_lists.values():
+        for cve in cve_list:
+            assert len(cve.vulnerable) == 1
+
+
+def test_choice(chosen_configs):
+    expected_results = {
+        "2020-7247": ("opensmtpd", "sid", "6.6.1p1-5", "Bug"),
+        "2014-0160": ("openssl", "sid", "1.0.1f-1", "Bug"),
+        "2021-3156": ("sudo", "buster", "1.8.27-1+deb10u2", "N-1"),
+        "2020-35448": ("binutils", "bullseye", "2.35.2-2", "Vulnerable"),
+    }
+    for cve_number, chosen_config in chosen_configs.items():
+        package = expected_results[cve_number][0]
+        release = expected_results[cve_number][1]
+        vuln_version = expected_results[cve_number][2]
+        method = expected_results[cve_number][3]
+        assert (
+            chosen_config.package == package
+            and chosen_config.release == release
+            and chosen_config.vulnerable[0].version == vuln_version
+            and chosen_config.vulnerable[0].method == method
+        )

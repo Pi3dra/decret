@@ -17,7 +17,7 @@ illustrate security concepts.
 """
 
 import pytest
-from decret.utils import arg_parsing 
+from decret.utils import arg_parsing
 from decret.config import FatalError
 
 

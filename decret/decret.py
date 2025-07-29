@@ -18,9 +18,9 @@ illustrate security concepts.
 
 import json
 import os
+from typing import Optional
 import argparse
 import re
-from typing import Optional
 import requests
 from bs4 import BeautifulSoup, Tag
 from requests.exceptions import RequestException
@@ -461,6 +461,8 @@ class Cve:
         bug_configs = []
         dsa_configs = []
         assert self.vulnerable is not None
+        if len(self.vulnerable) < 2:
+            return
 
         for vuln_config in self.vulnerable:
             if vuln_config.method == "Bug":
@@ -488,75 +490,77 @@ class Cve:
 
 def get_cve_tables(args: argparse.Namespace):
     url = f"https://security-tracker.debian.org/tracker/CVE-{args.cve_number}"
-    fixed_table: Optional[Tag] = None
-    info_table: Optional[Tag] = None
 
     try:
         response = requests.get(url, timeout=DEFAULT_TIMEOUT)
         response.raise_for_status()
-        soup = BeautifulSoup(response.text, "html.parser")
-
-        header_info = ["Source Package", "Release", "Version", "Status"]
-        header_fixed = [
-            "Package",
-            "Type",
-            "Release",
-            "Fixed Version",
-            "Urgency",
-            "Origin",
-            "Debian Bugs",
-        ]
-
-        info_tables = soup.find_all("table")  # Get all table tags
-        for elt in info_tables:
-            if info_tables is not None and isinstance(elt, Tag):
-                header = [column.get_text() for column in elt.find_all("th")]
-                if header == header_info:
-                    info_table = elt
-                if header == header_fixed:
-                    fixed_table = elt
-
-        if info_table == [] and fixed_table == []:
-            raise CVENotFound(
-                "Decret didn't find any tables on the security tracker site"
-                " CVE is probably NOT-FOR-US or RESERVED"
-            )
-
-        info_table, fixed_table = clean_tables(info_table, fixed_table)
-        info_table, fixed_table = filter_tables(info_table, fixed_table)
-
-        if info_table == [] and fixed_table == []:
-            if args.release is not None:
-                message = ",or the specified release was never vulnerable"
-            else:
-                message = ""
-            raise CVENotFound(
-                "CVE is probably ITP this is not replicable"
-                f"{message}"
-                ", or the specified filtering is incorrect"
-            )
-
     except RequestException as error:
         raise CVENotFound(f"{error}") from error
+
+    soup = BeautifulSoup(response.text, "html.parser")
+    tables = soup.find_all("table")  # Get all table tags
+
+    header_info = ["Source Package", "Release", "Version", "Status"]
+    header_fixed = [
+        "Package",
+        "Type",
+        "Release",
+        "Fixed Version",
+        "Urgency",
+        "Origin",
+        "Debian Bugs",
+    ]
+
+    info_tag: Optional[Tag] = None
+    fixed_tag: Optional[Tag] = None
+    for table in tables:
+        if not isinstance(table, Tag):
+            continue
+
+        header = [column.get_text() for column in table.find_all("th")]
+        if header == header_info:
+            info_tag = table
+        if header == header_fixed:
+            fixed_tag = table
+
+    if info_tag is None and fixed_tag is None:
+        raise CVENotFound(
+            "Decret didn't find any tables on the security tracker site"
+            " CVE is probably NOT-FOR-US or RESERVED"
+        )
+
+    info_table, fixed_table = parse_tables(info_tag, fixed_tag)
+    info_table = fill_package_names(info_table)
+    info_table, fixed_table = filter_tables(info_table, fixed_table)
+
+    if info_table == [] and fixed_table == []:
+        if args.release is not None:
+            message = ",or the specified release was never vulnerable"
+        else:
+            message = ""
+        raise CVENotFound("CVE is probably ITP this is not replicable" f"{message}")
 
     return info_table, fixed_table
 
 
-def clean_tables(info_table, fixed_table):
-    if fixed_table != []:
-        fixed_table = list(fixed_table.find_all("td"))
-        fixed_table = [line.get_text() for line in fixed_table]
-        fixed_table = [fixed_table[i : i + 7] for i in range(0, len(fixed_table), 7)]
-    else:
-        fixed_table = []
+def parse_tables(info_tag, fixed_tag):
+    info_table = []
+    fixed_table = []
 
-    if info_table != []:
-        info_table = list(info_table.find_all("td"))
+    if info_tag is not None:
+        info_table = list(info_tag.find_all("td"))
         info_table = [line.get_text() for line in info_table]
         info_table = [info_table[i : i + 4] for i in range(0, len(info_table), 4)]
-    else:
-        info_table = []
 
+    if fixed_tag is not None:
+        fixed_table = list(fixed_tag.find_all("td"))
+        fixed_table = [line.get_text() for line in fixed_table]
+        fixed_table = [fixed_table[i : i + 7] for i in range(0, len(fixed_table), 7)]
+
+    return info_table, fixed_table
+
+
+def fill_package_names(info_table):
     current_package = ""
     for line in info_table:
         if line[0] != "":
@@ -565,7 +569,7 @@ def clean_tables(info_table, fixed_table):
         elif line[0] == "":
             line[0] = current_package
 
-    return info_table, fixed_table
+    return info_table
 
 
 def filter_tables(info_table, fixed_table):
@@ -762,7 +766,7 @@ def handle_data_retrieval(args):
             )
             info_table, fixed_table = get_cve_tables(args)
         except CVENotFound as error:
-            raise CVENotFound from error
+            raise CVENotFound(error) from error
 
         cves = convert_tables(info_table, fixed_table)
 
