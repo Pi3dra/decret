@@ -1,4 +1,5 @@
-# DEbian Cve REproducer Tool (DECRET)
+![](./img/Banner.png)
+# DEbian Cve REproducer Tool 
 
 This tool reproduces a vulnerable Debian environment for a given CVE number.  
 
@@ -73,8 +74,8 @@ You can find examples in the `examples` directory.
 
 Our GitHub Actions run pylint, and pytest. Run them locally if possible:
 ```shell
-black .
-pylint decret/
+black decret tests
+pylint decret tests
 pytest
 ```
 5. Verify your code passes CI tests under `.github/workflows`
@@ -82,4 +83,7 @@ pytest
 
 ## Working principle
 
-![](./img/reproduction_implementation.png)
+![](./img/implementation.png)
+
+---
+Disclaimer: This project is not endorsed by, or sponsored by the Debian Project. The Debian name and logo are trademarks of Software in the Public Interest, Inc. The Debian logo is used here solely to indicate that this software is designed to use Debian-based systems, in accordance with Debian’s trademark guidelines.
