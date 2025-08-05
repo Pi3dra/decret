@@ -23,13 +23,16 @@ from decret.config import (
 # ====================== Requirements =========================
 
 
-def check_program_is_present(progname, cmdline):
+def check_program_is_present(progname: str, cmdline: list[str], fatal: bool = True):
     try:
         subprocess.run(cmdline, check=True, shell=False, capture_output=True)
+        return True
     except subprocess.CalledProcessError as exc:
-        raise FatalError(
-            f"{progname} does not seem to be installed. {cmdline} did not return 0."
-        ) from exc
+        if fatal:
+            raise FatalError(
+                f"{progname} does not seem to be installed. {cmdline} did not return 0."
+            ) from exc
+        return False
 
 
 def check_requirements():
@@ -208,8 +211,11 @@ def version_distance(v1, v2):
 def init_decret():  # pragma: no cover
     args = arg_parsing()
     check_requirements()
+    if not args.do_not_use_sudo:
+        if not check_program_is_present("Sudo", ["sudo", "-V"], fatal=False):
+            print("Warning: sudo is absent. Activating --do-not-use-sudo.")
+            args.do_not_use_sudo = True
     init_shared_directory(args)
-
     return args
 
 
