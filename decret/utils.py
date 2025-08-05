@@ -422,7 +422,7 @@ def build_docker(args):
         build_cmd = ["sudo"]
 
     build_cmd.extend(["docker", "build"])
-    build_cmd.extend(["--progress", "plain", "--no-cache"])
+    build_cmd.extend(["--progress", "plain"])
     build_cmd.extend(["-t", docker_image_name])
     build_cmd.append(args.dirname)
 
