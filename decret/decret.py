@@ -683,12 +683,16 @@ def display_options(cve_list):
         if len(cve.vulnerable) > 1:
             print(f"{i} Release: {cve.release}, Package: {cve.package}")
             for x, vuln_config in enumerate(cve.vulnerable, start=1):
-                print(f"  {x}: Version: {vuln_config.version}")
+                print(
+                    f"  {x}: Version: {vuln_config.version}",
+                    f"Method: {vuln_config.method}",
+                )
         else:
             print(
                 f"{i} Release: {cve.release}",
                 f"Package: {cve.package}",
                 f"Version: {cve.vulnerable[0].version}",
+                f"Method {cve.vulnerable[0].method}",
             )
 
 
