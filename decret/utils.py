@@ -240,6 +240,20 @@ def arg_parsing(args=None):
         help="Debian Release name from 2005 to 2025",
     )
     parser.add_argument(
+        "-m",
+        "--method",
+        dest="method",
+        type=str,
+        choices=["vulnerable", "bug", "dsa", "previous-version", "all"],
+        nargs="+",
+        help=(
+            "Specify one or many search methods to use, in order, from left to right. "
+            "Stops after finding at least one version per possible configuration. "
+            "Cache may conflict, consider using --no-cache-lookup."
+            "'all' will try all methods. "
+        ),
+    )
+    parser.add_argument(
         "-d",
         "--directory",
         dest="dirname",

@@ -73,6 +73,7 @@ def found_tables(cve_numbers):
 
     for cve_number in cve_numbers:
         args = argparse.Namespace()
+        args.method = None
         args.cve_number = cve_number
         args.release = None
 
@@ -89,6 +90,7 @@ def found_tables(cve_numbers):
 def filtered_tables(found_tables):
     results = {}
     args = argparse.Namespace()
+    args.method = None
     args.release = False
     for cve, (info_table, fixed_table) in found_tables.items():
         info_table, fixed_table = filter_tables(info_table, fixed_table)
@@ -109,6 +111,7 @@ def converted_tables(filtered_tables):
 def vuln_configs(converted_tables):
     for cve_number, cve_list in converted_tables.items():
         args = argparse.Namespace()
+        args.method = None
         args.cve_number = cve_number
 
         versions_lookup(cve_list, args)
@@ -120,6 +123,7 @@ def vuln_configs(converted_tables):
 def timestamps(vuln_configs):
     for cve_number, cve_list in vuln_configs.items():
         args = argparse.Namespace()
+        args.method = None
         args.cve_number = cve_number
         get_snapshots(cve_list, args)
     return vuln_configs
@@ -130,6 +134,7 @@ def collapsed_lists(timestamps):
     results = {}
     for cve_number, cve_list in timestamps.items():
         args = argparse.Namespace()
+        args.method = None
         args.bin_package = None
         args.release = None
         cve_list = collapse_list(cve_list, args)

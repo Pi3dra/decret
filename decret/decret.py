@@ -378,7 +378,6 @@ class Cve:
                     versions = self._extract_versions(content, bugid)
                     already_visited[bugid] = versions
                     self._handle_versions(versions, check)
-
                 except RequestException as error:
                     raise SearchError(
                         f"requests: Error accesing bug report: {error}"
@@ -425,33 +424,48 @@ class Cve:
         self.bug_version_lookup(args, visited_bugids, check=True)
 
     def vulnerable_versions_lookup(self, args, visited_bugids):
-        debug(f"\nFINDING version for: {self.package},{self.release}")
-        try:
-            debug("ATTEMTPING to find version with bugid")
-            self.bug_version_lookup(args, visited_bugids)
-        except (SearchError, CVENotFound) as error:
-            debug(f"BUGID failed with:\n\t{error}\n")
-            debug("ATTEMPTING to find version with DSA")
+        assert self.vulnerable is not None
+
+        # If already flagged as vulnerable by debian, skip,
+        if len(self.vulnerable) > 0 or args.method == "vulnerable":
+            return
+
+        # Define the search methods in order, or use only the specified one(s)
+        method_order = ["bug", "dsa", "previous-version"]
+        stop_on_succes = True
+        if args.method:
+            if "all" in args.method:
+                stop_on_succes = False
+            else:
+                method_order = args.method
+
+        for method in method_order:
+            # This means a method succeeded to find at least one possibly
+            # vulnerable configuration
+            if len(self.vulnerable) > 0 and stop_on_succes:
+                break
+
             try:
-                self.dsa_version_lookup(args, visited_bugids)
-            except (SearchError, CVENotFound) as error2:
-                debug(f"DSA failed with:\n\t{error2}\n")
+                debug(f"{method.upper()} Attempting search")
 
-                # DSA lookup can find many bugids, which can fail
-                # We only search with N-1 if all of them failed
-                assert self.vulnerable is not None
-                found_any = any(
-                    config.method == "DSA"
-                    for config in self.vulnerable
-                    if self.vulnerable is not None
+                if method == "bug":
+                    self.bug_version_lookup(args, visited_bugids)
+                elif method == "dsa":
+                    self.dsa_version_lookup(args, visited_bugids)
+                elif method == "previous-version":
+                    self.preceding_version_lookup()
+                debug(f"{method.upper()} search didn't error")
+
+            except (SearchError, CVENotFound) as error:
+                debug(f"{method.upper()} failed with:\n\t{error}\n")
+
+        if len(self.vulnerable) == 0:
+            extended_message = ""
+            if args.method is not None:
+                extended_message = (
+                    f", Specified method: {args.method} didn't yield results"
                 )
-
-                if not found_any:
-                    debug("ATTEMPTING to find version with N-1")
-                    try:
-                        self.preceding_version_lookup()
-                    except (SearchError, CVENotFound) as error3:
-                        debug(f"N-1 failed with:\n\t{error3}")
+            raise CVENotFound(f"Failed to find a vulnerable version {extended_message}")
 
     def choose_one(self):
         """
@@ -622,23 +636,29 @@ def convert_tables(info_table, fixed_table):
         config2 = Cve(package=line[0], release=line[1], vulnerable=[vulnerable_config])
         convert_results.append(config2)
 
-    for config in convert_results:
-        debug(f"{config.to_string()}\n")
-
     return convert_results
 
 
 def versions_lookup(cve_list, args):
     # might be smart to use flags to filter which method to use
     visited_bugids = {}
-    for cve in cve_list:
+    # Using a shallow copy to not shift indexes when removing
+    # elements on exceptions
+    for cve in cve_list[:]:
         if cve.vulnerable == []:
-            cve.vulnerable_versions_lookup(args, visited_bugids)
+            try:
+                cve.vulnerable_versions_lookup(args, visited_bugids)
+            except CVENotFound:
+                # This is mainly used for things like the
+                # --method flag, as bug and dsa methods
+                # are not generally applicable
+                cve_list.remove(cve)
 
 
 def get_snapshots(cve_list, args):
     for cve in cve_list:
-        for config in cve.vulnerable:
+        # Using a shallow copy to avoid shifting indexes
+        for config in cve.vulnerable[:]:
             try:
                 config.get_hash_and_bin_names(args, cve.package)
                 config.get_snapshot()
@@ -774,7 +794,7 @@ def handle_data_retrieval(args):
 
         cves = convert_tables(info_table, fixed_table)
 
-        print("Doing version and snapshot lookup\n")
+        print("Doing version and snapshot lookup")
         versions_lookup(cves, args)
         get_snapshots(cves, args)
         print("Caching results\n")

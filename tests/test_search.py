@@ -74,6 +74,7 @@ def test_should_fail():
     test = ["2005-2433", "2002-0807", "2006-2625", "2021-4134"]
     for cve_number in test:
         args = argparse.Namespace()
+        args.method = None
         args.cve_number = cve_number
         args.no_cache_lookup = False
         args.release = None
