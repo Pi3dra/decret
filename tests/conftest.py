@@ -17,13 +17,24 @@ illustrate security concepts.
 """
 
 from argparse import Namespace
-import sys
 import os
+import sys
+import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import pytest
-from decret.decret import *
+# pylint:disable=wrong-import-position
+from decret.decret import (
+    argparse,
+    choose_one,
+    collapse_list,
+    convert_tables,
+    CVENotFound,
+    filter_tables,
+    get_cve_tables,
+    get_snapshots,
+    versions_lookup,
+)
 
 
 @pytest.fixture
@@ -51,11 +62,8 @@ def wheezy_args():
 @pytest.fixture
 def cve_numbers():
     file_path = "tests/test-material/cves.txt"
-    try:
-        with open(file_path, "r") as file:
-            return [line.strip() for line in file if line.strip()]
-    except Exception as e:
-        pytest.fail(f"Error reading CVE file: {str(e)}")
+    with open(file_path, "r", encoding="utf8") as file:
+        return [line.strip() for line in file if line.strip()]
 
 
 @pytest.fixture
@@ -71,7 +79,7 @@ def found_tables(cve_numbers):
         try:
             info_table, fixed_table = get_cve_tables(args)
             results[cve_number] = (info_table, fixed_table)
-        except Exception as e:
+        except CVENotFound as e:
             errored_on_search.append((cve_number, e))
             continue
     return results

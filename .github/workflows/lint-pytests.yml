@@ -25,13 +25,13 @@ jobs:
         pip install -r requirements.txt
 
     - name: Check with black 
-      run: black --check decret/ 
+      run: black --check decret/ tests/
 
     - name: Type checking with mypy
-      run: mypy decret/
+      run: mypy decret/ tests/
 
     - name: Lint with pylint 
-      run: pylint decret/
+      run: PYTHONPATH=. pylint decret tests
 
     - name: Run tests with pytest
       run: pytest

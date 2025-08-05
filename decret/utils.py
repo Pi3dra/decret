@@ -23,7 +23,9 @@ from decret.config import (
 # ====================== Requirements =========================
 
 
-def check_program_is_present(progname: str, cmdline: list[str], fatal: bool = True):
+def check_program_is_present(
+    progname: str, cmdline: list[str], fatal: bool = True
+) -> bool:
     try:
         subprocess.run(cmdline, check=True, shell=False, capture_output=True)
         return True

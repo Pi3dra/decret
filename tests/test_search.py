@@ -1,6 +1,6 @@
-import pytest
-from decret.decret import *
 import re
+import pytest
+from decret.decret import argparse, CVENotFound, DEBIAN_RELEASES, handle_data_retrieval
 
 
 # ===================== TESTING Finding and cleaning Tables =====================
@@ -84,7 +84,8 @@ def test_should_fail():
 # ===================== TESTING Conversion to cve object list =====================
 
 
-def check_cve(config, package, release, fixed, advisory=None, bugid=None):
+# pylint:disable=too-many-arguments, too-many-positional-arguments
+def check_cve(config, package, release, fixed, advisory, bugid):
     return (
         config.package == package
         and config.release == release
@@ -170,6 +171,7 @@ def count_configs(vuln_configs):
 
     return (counter, results)
 
+
 def check_counts(count, vuln, dsa, preceding, bug):
     return (
         count["Vulnerable"] == vuln
@@ -177,8 +179,6 @@ def check_counts(count, vuln, dsa, preceding, bug):
         and count["N-1"] == preceding
         and count["Bug"] == bug
     )
-
-
 
 
 def test_finding_vuln_configs(vuln_configs):
