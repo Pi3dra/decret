@@ -55,7 +55,7 @@ RELEASE_PRIORITY["sid"] = 0
 DEBUG = False
 
 
-class SearchError(BaseException):
+class SearchError(Exception):
     pass
 
 
@@ -126,8 +126,9 @@ class VulnerableConfig:
             response = get_json(url)
             for res in response:
                 bin_names.append(res["name"])
-        except requests.exceptions.RequestException as err:
-            print(f"get_bin_names failed with: {err}")
+            self.bin_names = bin_names
+        except requests.exceptions.RequestException as error:
+            raise SearchError("get_bin_names failed with: ") from error
 
     def get_hash_and_bin_names(self, args, package):
         try:
@@ -138,9 +139,12 @@ class VulnerableConfig:
                 if res["architecture"] == "amd64" or res["architecture"] == "all":
                     self.pkg_hash = res["hash"]
                     break
+            if self.pkg_hash is None:
+                raise SearchError("hash not found")
+
             self.bin_names = [package]
 
-        except (requests.exceptions.RequestException, KeyError) as error:
+        except (requests.exceptions.RequestException, KeyError, SearchError) as error:
             try:
                 url = (
                     f"http://snapshot.debian.org/mr/package"
@@ -246,13 +250,9 @@ class Cve:
             ],
         )
 
-    def init_vulnerable(self):
-        if self.vulnerable is None:
-            self.vulnerable = []
-
     def preceding_version_lookup(self):
-        self.init_vulnerable()
-        if self.fixed is None or self.vulnerable is None:
+        assert self.vulnerable is not None
+        if self.fixed is None:
             raise SearchError(
                 f"package: {self.package} for {self.release} has no fixed_version"
             )
@@ -348,9 +348,8 @@ class Cve:
             raise CVENotFound(f"bug { self.bugids} has no 'Found in version' tag")
 
     def bug_version_lookup(self, args, already_visited, check=False):
-        self.init_vulnerable()
-
-        if self.bugids is None or self.vulnerable is None:
+        assert self.vulnerable is not None
+        if self.bugids is None:
             raise SearchError(
                 f"package {self.package} for {self.release} has no bugids"
             )
@@ -384,7 +383,8 @@ class Cve:
                     ) from error
 
     def dsa_version_lookup(self, args, visited_bugids):
-        self.init_vulnerable()
+        assert self.vulnerable is not None
+
         if self.bugids is None:
             self.bugids = []
 
@@ -447,17 +447,22 @@ class Cve:
 
             try:
                 debug(f"{method.upper()} Attempting search")
-
-                if method == "bug":
-                    self.bug_version_lookup(args, visited_bugids)
-                elif method == "dsa":
-                    self.dsa_version_lookup(args, visited_bugids)
-                elif method == "previous-version":
-                    self.preceding_version_lookup()
+                match method:
+                    case "bug":
+                        self.bug_version_lookup(args, visited_bugids)
+                    case "dsa":
+                        self.dsa_version_lookup(args, visited_bugids)
+                    case "previous-version":
+                        self.preceding_version_lookup()
                 debug(f"{method.upper()} search didn't error")
 
             except (SearchError, CVENotFound) as error:
                 debug(f"{method.upper()} failed with:\n\t{error}\n")
+
+        if len(self.vulnerable) == 0:
+            raise CVENotFound(
+                f"No vulnerable version for {self.release}, {self.package} found"
+            )
 
         if len(self.vulnerable) == 0:
             extended_message = ""
@@ -663,7 +668,7 @@ def get_snapshots(cve_list, args):
                 config.get_hash_and_bin_names(args, cve.package)
                 config.get_snapshot()
             except SearchError as error:
-                debug(f"failed to get snapshot with: {error}")
+                debug(f"failed to get snapshot with {error}")
                 cve.vulnerable.remove(config)
 
 
